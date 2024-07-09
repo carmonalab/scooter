@@ -23,9 +23,9 @@ Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
 VignetteBuilder: knitr
-URL: https://github.com/carmonalab/HiTME
-BugReports: https://github.com/carmonalab/HiTME/issues
-License:
+URL: https://github.com/carmonalab/scooter
+BugReports: https://github.com/carmonalab/scooter/issues
+License: GNU
 LazyData: true
 biocViews:
 Depends: R (>= 4.4.0)
