@@ -215,7 +215,7 @@ get.scores <- function(matrix,
 
     results[["Feature_matrix"]] <- matrix
     results[["Distance_matrix"]] <- stats::dist(matrix, method = dist.method)
-
+    mat <- as.matrix(results[["Distance_matrix"]])
 
     # Plot PCA ###############################################
     results[["Plots"]][["PCA_feature_space"]] <- plot_PCA(matrix,
@@ -224,7 +224,7 @@ get.scores <- function(matrix,
                                                           invisible = invisible) +
       ggplot2::ggtitle("PCA on feature matrix")
 
-    results[["Plots"]][["PCA_sample_space"]] <- plot_PCA(as.matrix(results[["Distance_matrix"]]),
+    results[["Plots"]][["PCA_sample_space"]] <- plot_PCA(mat,
                                                          scale. = TRUE,
                                                          color.cluster.by = cluster_labels,
                                                          invisible = c("var", "quali")) +
@@ -235,7 +235,7 @@ get.scores <- function(matrix,
 
     ## Find number of clusters with silhouette method ###############################################
     results[["Plots"]][["Optimal_number_of_clusters"]] <-
-      factoextra::fviz_nbclust(x = as.matrix(results[["Distance_matrix"]]),
+      factoextra::fviz_nbclust(x = mat,
                                FUNcluster = cluster::pam,
                                method = "silhouette",
                                k.max = 10,
