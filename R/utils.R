@@ -230,32 +230,27 @@ get.scores <- function(matrix,
                                                          invisible = c("var", "quali")) +
       ggplot2::ggtitle("PCA on sample distance matrix")
 
-    #
-    #     # Clustering ###############################################
-    #
-    #     ## Find number of clusters with silhouette method ###############################################
-    #     n_clust <- factoextra::fviz_nbclust(x = mat,
-    #                                         FUNcluster = cluster::pam,
-    #                                         method = "silhouette",
-    #                                         k.max = 10,
-    #                                         print.summary = TRUE) + theme_minimal() + ggtitle("Optimal number of clusters
-    #                                                                                            - silhouette method")
-    #     print(n_clust)
-    #     n_clust <- n_clust$data
-    #     max_cluster <- as.numeric(n_clust$clusters[which.max(n_clust$y)])
-    #
-    #     ## Plot PCA with clustering ###############################################
-    #     results[["Plots"]][["PCA_feature_space"]] <- plot_PCA(matrix,
-    #                                                           color.cluster.by = cluster_labels,
-    #                                                           label = "var",
-    #                                                           invisible = invisible) +
-    #       ggplot2::ggtitle("PCA on feature matrix")
-    #
-    #     results[["Plots"]][["PCA_sample_space"]] <- plot_PCA(as.matrix(results[["Distance_matrix"]]),
-    #                                                          scale. = TRUE,
-    #                                                          color.cluster.by = cluster_labels,
-    #                                                          invisible = c("var", "quali")) +
-    #       ggplot2::ggtitle("PCA on sample distance matrix")
+
+    # Clustering ###############################################
+
+    ## Find number of clusters with silhouette method ###############################################
+    results[["Plots"]][["Optimal_number_of_clusters"]] <-
+      factoextra::fviz_nbclust(x = results[["Distance_matrix"]],
+                               FUNcluster = cluster::pam,
+                               method = "silhouette",
+                               k.max = 10,
+                               print.summary = TRUE) +
+      theme_minimal() +
+      ggtitle("Optimal number of clusters\nK-Medoids (Partitioning Around Medoids) and silhouette method")
+    n_clust <- results[["Plots"]][["PCA_sample_space"]]$data
+    n_clust_opt <- as.numeric(n_clust$clusters[which.max(n_clust$y)])
+
+    ## Plot PCA with clustering ###############################################
+    clustering <- pam(mat, n_clust_opt, nstart = 30)
+    results[["Plots"]][["PCA_sample_space_clustered"]] <- fviz_cluster(clustering) +
+      coord_equal() +
+      theme_minimal() +
+      ggplot2::ggtitle("PCA on sample distance matrix")
 
 
     # Calculate scores + plots ###############################################
