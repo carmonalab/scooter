@@ -235,7 +235,7 @@ get.scores <- function(matrix,
 
     ## Find number of clusters with silhouette method ###############################################
     results[["Plots"]][["Optimal_number_of_clusters"]] <-
-      factoextra::fviz_nbclust(x = results[["Distance_matrix"]],
+      factoextra::fviz_nbclust(x = as.matrix(results[["Distance_matrix"]]),
                                FUNcluster = cluster::pam,
                                method = "silhouette",
                                k.max = 10,
