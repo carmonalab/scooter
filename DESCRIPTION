@@ -1,6 +1,6 @@
 Package: HiTME
 Title: Classify Cell Types in the Tumor Microenvironment
-Version: 1.3.0
+Version: 1.0.0
 Authors@R: c(
   person(given = 'Josep', family = 'Garnica',
     email = 'josep.garnica@unil.ch',
@@ -28,23 +28,19 @@ BugReports: https://github.com/carmonalab/HiTME/issues
 License:
 LazyData: true
 biocViews:
-Depends: R (>= 4.3.1)
+Depends: R (>= 4.4.0)
 Imports:
+  Seurat (>= 5.0.0),
+  SeuratObject (>= 5.0.0),
   BiocParallel (>= 1.34.2),
-  biomaRt (>= 2.56.1),
   DESeq2 (>= 1.40.2),
   SummarizedExperiment (>= 1.30.2),
   Hotelling (>= 1.0-8),
   MatrixGenerics (>= 1.12.3),
   parallelly (>= 1.36.0),
-  scGate (>= 1.6.1),
-  ProjecTILs (>= 3.3.1),
-  SignatuR (>= 0.1.2),
+  stats(>= 4.4.0),
   dplyr (>= 1.1.4),
   ggplot2 (>= 3.4.4),
-  cowplot (>= 1.1.1),
-  Seurat (>= 5.0.0),
-  SeuratObject (>= 5.0.0),
   stringr (>= 1.5.1),
   caret (>= 6.0-94),
   data.table (>= 1.14.8),
