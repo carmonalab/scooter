@@ -4,7 +4,6 @@
 methods::setClass(Class = "scoot",
                   slots = list(
                     metadata = "data.frame",
-                    predictions = "list",
                     composition = "list",
                     aggregated_profile = "list",
                     version = "list"
@@ -232,22 +231,29 @@ get_scores <- function(matrix,
 
 
     # Clustering ###############################################
-
     ## Find number of clusters with silhouette method ###############################################
-    results[["plots"]][["optimal_number_of_clusters"]] <-
+    if (length(cluster_labels) <= 10) {
+      k_max <- length(cluster_labels) - 1
+    } else {
+      k_max <- 10
+    }
+
+    results[["plots"]][["number_of_clusters"]] <-
       factoextra::fviz_nbclust(x = mat,
                                FUNcluster = cluster::pam,
                                method = "silhouette",
-                               k.max = 10,
+                               k.max = k_max,
                                print.summary = TRUE) +
       theme_minimal() +
-      ggtitle("Optimal number of clusters\nK-Medoids (Partitioning Around Medoids) and silhouette method")
-    n_clust <- results[["plots"]][["pca_sample_space"]]$data
+      ggtitle("Clusters suggested by\nK-Medoids (Partitioning Around Medoids) and silhouette method")
+    n_clust <- results[["plots"]][["number_of_clusters"]]$data
     n_clust_opt <- as.numeric(n_clust$clusters[which.max(n_clust$y)])
 
     ## Plot PCA with clustering ###############################################
     if (n_clust_opt < 2) {
-      results[["plots"]][["pca_sample_space_clustered"]] <- results[["plots"]][["pca_sample_space"]]
+      results[["plots"]][["pca_sample_space_clustered"]] <- plot_pca(matrix,
+                                                                     label = "var",
+                                                                     invisible = invisible)
     } else {
       clustering <- pam(mat, n_clust_opt, nstart = 30)
       results[["plots"]][["pca_sample_space_clustered"]] <- fviz_cluster(clustering) +

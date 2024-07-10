@@ -12,7 +12,7 @@
 #' @param clr_zero_impute_perc Parameter for internal \link{get_celltype_composition}.
 #' @param layer_links Parameter for internal \link{get_celltype_composition}
 #' @param assay Parameter for internal \link{get_aggregated_profile}.
-#' @param layer1_link Column of metadata linking layer1 prediction (e.g. scGate ~ CellOntology_ID) in order to perform subsetting for second layer classification.
+#' @param layer_1_link Column of metadata linking layer_1 prediction (e.g. scGate ~ CellOntology_ID) in order to perform subsetting for second layer classification.
 #'
 #' @importFrom methods setClass new
 #' @importFrom BiocParallel MulticoreParam bplapply
@@ -26,8 +26,8 @@
 
 
 scoot_object <- function(object,
-                         group_by = list("layer1" = c("scGate_multi"),
-                                         "layer2" = c("functional.cluster")
+                         group_by = list("layer_1" = "scGate_multi",
+                                         "layer_2" = "functional.cluster"
                          ),
                          split_by = NULL,
                          min_cells_composition = 10,
@@ -37,7 +37,7 @@ scoot_object <- function(object,
                          clr_zero_impute_perc = 1,
                          layer_links = c("scGate_multi" = "functional.cluster"),
                          assay = "RNA",
-                         layer1_link = "CellOntology_ID",
+                         layer_1_link = "CellOntology_ID",
 
                          ncores = parallelly::availableCores() - 2,
                          bparam = NULL,
@@ -52,7 +52,7 @@ scoot_object <- function(object,
                clr_zero_impute_perc,
                layer_links,
                assay,
-               layer1_link)
+               layer_1_link)
 
   # if object is a single Seurat object, turn into a list
   if (!is.list(object)) {
@@ -65,7 +65,7 @@ scoot_object <- function(object,
                                       clr_zero_impute_perc,
                                       layer_links,
                                       assay,
-                                      layer1_link)
+                                      layer_1_link)
   } else {
     # set parallelization parameters
     param <- set_parallel_params(ncores = ncores,
@@ -85,8 +85,8 @@ scoot_object <- function(object,
 }
 
 scoot_object_helper <- function(object,
-                                group_by = list("layer1" = c("scGate_multi"),
-                                                "layer2" = c("functional.cluster")
+                                group_by = list("layer_1" = c("scGate_multi"),
+                                                "layer_2" = c("functional.cluster")
                                 ),
                                 split_by = NULL,
                                 min_cells_composition = 10,
@@ -96,7 +96,7 @@ scoot_object_helper <- function(object,
                                 clr_zero_impute_perc = 1,
                                 layer_links = c("scGate_multi" = "functional.cluster"),
                                 assay = "RNA",
-                                layer1_link = "CellOntology_ID") {
+                                layer_1_link = "CellOntology_ID") {
 
   if (is.null(object)) {
     stop("Please provide a Seurat object")
@@ -127,55 +127,12 @@ scoot_object_helper <- function(object,
   }
 
 
-  # Make list of list for layers for predictions slot
-  pred_list <- list()
-  for (a in names(group_by)) {
-    pred_list[[a]] <- list()
-    pred_list[[a]][[group_by[[a]]]] <- object@meta.data[,group_by[[a]], drop = FALSE]
-  }
-
-
-
   # Run extended if object got scGate info
   # Extract values from misc slot from object
   if (any(group_by == "scGate_multi")) {
-    layer.scgate <- names(group_by[group_by == "scGate_multi"])
     if (is.null(name_additional_signatures)) {
-      name_additional_signatures <- object@misc$layer1_param$additional_signatures
+      name_additional_signatures <- object@misc$layer_1_param$additional_signatures
     }
-    scgate_models <- object@misc$layer1_param$scGate_models
-
-
-    if (!is.null(name_additional_signatures)) {
-      sig <- grep(paste(name_additional_signatures, collapse = "|"),
-                  names(object@meta.data), value = TRUE)
-      sig_df <- object@meta.data[, sig]
-      pred_list[[layer.scgate]][["additional_signatures"]] <- sig_df
-    }
-
-    if (!is.null(scgate_models)) {
-      scgate <- grep(paste(paste0(scgate_models, "$"), collapse = "|"),
-                     names(object@meta.data), value = TRUE)
-      scgate.df <- object@meta.data[, scgate]
-      pred_list[[layer.scgate]][["scGate_is.pure"]] <- scgate.df
-    }
-
-    if (!is.null(name_additional_signatures) && !is.null(scgate_models)) {
-      ucell <- names(object@meta.data)[!names(object@meta.data) %in% c(sig, scgate)] %>%
-        grep("_UCell$", ., value = TRUE)
-
-      ucell.df <- object@meta.data[, ucell]
-
-      pred_list[[layer.scgate]][["UCell_scores"]] <- ucell.df
-    }
-  }
-
-  # Run extended if object got ProjecTILs info
-  # Extract values from misc slot from object
-  if (any(group_by == "functional.cluster")) {
-    layer_pt <- names(group_by[group_by == "functional.cluster"])
-    pred_list[[layer_pt]][["functional.cluster"]] <- object@meta.data[,"functional.cluster", drop = FALSE]
-    pred_list[[layer_pt]][["functional.cluster.conf"]] <- object@meta.data[,"functional.cluster.conf", drop = FALSE]
   }
 
 
@@ -188,7 +145,7 @@ scoot_object_helper <- function(object,
                                         split_by = split_by,
                                         useNA = useNA,
                                         clr_zero_impute_perc = clr_zero_impute_perc,
-                                        layer1_link = layer1_link,
+                                        layer_1_link = layer_1_link,
                                         layer_links = layer_links)
   # Compute avg expression
   # message("\nComputing aggregated profile...\n")
@@ -207,7 +164,6 @@ scoot_object_helper <- function(object,
 
   scoot <- methods::new("scoot",
                         metadata = object@meta.data,
-                        predictions = pred_list,
                         aggregated_profile = list("pseudobulk" = avg_expr,
                                                   "signatures" = aggr_sig),
                         composition = comp_prop
@@ -223,9 +179,9 @@ scoot_object_helper <- function(object,
 #' @param split_by A Seurat object metadata column to split by (e.g. sample names)
 #' @param min_cells_composition Set a minimum threshold for number of cells to calculate relative abundance (e.g. less than 10 cells -> no relative abundance will be calculated)
 #' @param useNA Whether to include not annotated cells or not (labelled as "NA" in the group_by_composition). Can be defined separately for each group_by_composition (provide single boolean or vector of booleans)
-#' @param layer_links Named vector indicating the relation of multiple layer classification, default is \code{c("scGate_multi", "functional.cluster")}. Name of the vector element ought to be layer1 and element layer2. This parameter is used to compute relative compositional data of layer2 within layer1 classes.
+#' @param layer_links Named vector indicating the relation of multiple layer classification, default is \code{c("scGate_multi", "functional.cluster")}. Name of the vector element ought to be layer_1 and element layer_2. This parameter is used to compute relative compositional data of layer_2 within layer_1 classes.
 #' @param clr_zero_impute_perc To calculate the clr-transformed relative abundance ("clr_freq"), zero values are not allowed and need to be imputed (e.g. by adding a pseudo cell count). Instead of adding a pseudo cell count of flat +1, here a pseudo cell count of +1% of the total cell count will be added to all cell types, to better take into consideration the relative abundance ratios (e.g. adding +1 cell to a total cell count of 10 cells would have a different, i.e. much larger effect, than adding +1 to 1000 cells).
-#' @param layer1_link Column of metadata linking layer1 prediction (e.g. scGate ~ CellOntology_ID) in order to perform subsetting for second layer classification.
+#' @param layer_1_link Column of metadata linking layer_1 prediction (e.g. scGate ~ CellOntology_ID) in order to perform subsetting for second layer classification.
 
 #' @importFrom Hotelling clr
 #' @importFrom dplyr group_by summarize filter ungroup mutate select left_join n coalesce bind_rows across all_of
@@ -257,7 +213,7 @@ get_celltype_composition <- function(object = NULL,
                                      useNA = FALSE,
                                      layer_links = c("scGate_multi" = "functional.cluster"),
                                      clr_zero_impute_perc = 1,
-                                     layer1_link = "CellOntology_ID") {
+                                     layer_1_link = "CellOntology_ID") {
 
   if (is.null(object)) {
     stop("Please provide a Seurat object or metadata as dataframe")
@@ -329,7 +285,7 @@ get_celltype_composition <- function(object = NULL,
   for (l in seq_along(layer_links)) {
     if (!all(c(names(layer_links[l]), layer_links[l]) %in%
              group_by_composition)) {
-      message("Not computing relative proportion values of layer2 within layer1 for ",
+      message("Not computing relative proportion values of layer_2 within layer_1 for ",
               paste0(names(layer_links[l]), " -> ", layer_links[l]))
     }
   }
@@ -359,7 +315,7 @@ get_celltype_composition <- function(object = NULL,
           # Return empty data.frame
           ctable <- ctable[0,]
         }
-        # get proportion relative to layer1 types
+        # get proportion relative to layer_1 types
         if (group_by_composition[[i]] %in% layer_links) {
           # stop if very few cells
           if (sum(ctable$cell_counts) < min_cells_composition) {
@@ -367,29 +323,29 @@ get_celltype_composition <- function(object = NULL,
             ctable <- list()
           } else {
             lay <- layer_links[which(layer_links == group_by_composition[[i]])]
-            if (lay %in% names(object@misc$layer2_param)) {
+            if (lay %in% names(object@misc$layer_2_param)) {
               meta_split <- split(meta.data,
                                   meta.data[[names(lay)]])
               # switch list names to cell ontology ID
               cellonto_dic <- lapply(meta_split, function(x) {
                 nam <- unique(x[[names(lay)]])
-                val <- unique(x[[layer1_link]])
+                val <- unique(x[[layer_1_link]])
                 names(val) <- nam
                 return(val)
               }) %>%
                 unname() %>%
                 unlist()
 
-              levs <- object@misc$layer2_param[[lay]]$levels2_per_levels1
+              levs <- object@misc$layer_2_param[[lay]]$levels2_per_levels1
               names(levs) <- names(cellonto_dic[match(names(levs), cellonto_dic)])
 
               # If a celltype was not detected, drop it
               levs <- levs[!is.na(names(levs))]
 
-              # Filter only layer1 cells with representation in layer2
+              # Filter only layer_1 cells with representation in layer_2
               meta_split <- meta_split[names(levs)]
 
-              # add factor to group by layer1
+              # add factor to group by layer_1
               for (f in names(meta_split)) {
                 meta_split[[f]]$functional.cluster <- factor(meta_split[[f]]$functional.cluster,
                                                              levels = levs[[f]])
@@ -536,12 +492,16 @@ get_aggregated_profile <- function(object,
       # object@meta.data[[group_by_aggregated[[i]]]] <- as.factor(object@meta.data[[group_by_aggregated[[i]]]])
 
       if (length(unique(object@meta.data[[group_by_aggregated[[i]]]])) >= 2) {
-        mat <-
-          Seurat::AggregateExpression(object,
-                                      group_by = group_by_aggregated[[i]],
-                                      assays = assay,
-                                      verbose = FALSE,
-                                      ...)[[assay]]
+        suppressWarnings(
+          suppressMessages(
+            mat <-
+              Seurat::AggregateExpression(object,
+                                          group.by = group_by_aggregated[[i]],
+                                          assays = assay,
+                                          verbose = FALSE,
+                                          ...)[[assay]]
+          )
+        )
         avg_exp[[i]] <- cbind(avg_exp[[i]], mat)
       } else {
         # Handle case if there is only one cell type
@@ -622,7 +582,7 @@ get_aggregated_signature <- function(object,
   }
 
   if (is.null(name_additional_signatures)) {
-    name_additional_signatures <- object@misc$layer1_param$additional_signatures
+    name_additional_signatures <- object@misc$layer_1_param$additional_signatures
   }
 
   if (is.null(name_additional_signatures)) {
@@ -717,15 +677,6 @@ merge_scoot_objects <- function(scoot_object = NULL,
     stop("Please provide a list of scoot object containing more than one sample")
     if (suppressWarnings(!all(lapply(scoot_object, function(x) {inherits(x, "scoot")})))) {
       stop("Not all components of the list are scoot objects.")
-    }
-  }
-
-  # TODO: delete? -------------------------------
-  # # give name to list of scoot objects
-  for (v in seq_along(scoot_object)) {
-    if (is.null(names(scoot_object)[v]) ||
-        is.na(names(scoot_object)[v])) {
-      names(scoot_object)[v] <- paste0("Sample", v)
     }
   }
 
@@ -953,7 +904,7 @@ merge_scoot_objects <- function(scoot_object = NULL,
 
 #' Get metrics of cell types pseudobulk clustering
 #'
-#' @param scoot_object A scoot class object obtained with \link{scoot_object} or pseudobulk raw count matrix (\code{scootObject@aggregated_profile$pseudobulk$layer1})
+#' @param scoot_object A scoot class object obtained with \link{scoot_object} or pseudobulk raw count matrix (\code{scootObject@aggregated_profile$pseudobulk$layer_1})
 #' @param cluster_by Vector indicating the variable for clustering, default is celltype (for the annotation) and sample
 #' @param cluster_by_drop_na Whether to keep (FALSE) or drop (TRUE) NAs present in cluster_by column.
 #' @param batching Vector indicating the variable for batching to allow calculating scores per batch, to account for batch effect
@@ -1066,8 +1017,6 @@ get_cluster_score <- function(scoot_object = NULL,
     # cluster_by column must be factor
     scoot_object@metadata[[i]] <- as.factor(scoot_object@metadata[[i]])
   }
-
-  scores <- str_to_title(tolower(scores))
 
   # set parallelization parameters
   param <- set_parallel_params(ncores = ncores,
@@ -1875,7 +1824,7 @@ nas_per_sample <- function(obj_list = NULL,
 #'
 #'
 #' @param scoot_object A scoot class object (typically after applying merge_scoot_objects onto a list of scootObjects)
-#' @param layer Default "layer1" if you have one cell type annotation layer in your scoot_object. Alternatively "layer2" etc. if you have multiple layers of annotation depths.
+#' @param layer Default "layer_1" if you have one cell type annotation layer in your scoot_object. Alternatively "layer_2" etc. if you have multiple layers of annotation depths.
 #' @param return_plot_to_var Optionally, you can save the ggplots to a variable if you would like to further modify and adapt the plots on your own.
 #' @param facet_by This allows you to pass a metadata column name present in your scoot_object$metadata to show your samples in facets with ggplot facet_grid, for example by "condition".
 
@@ -1889,7 +1838,7 @@ nas_per_sample <- function(obj_list = NULL,
 
 composition_barplot <- function(scoot_object = NULL,
                                 sample_col = NULL,
-                                layer = "layer1",
+                                layer = "layer_1",
                                 return_plot_to_var = FALSE,
                                 facet_by = NULL) {
 
@@ -1980,8 +1929,8 @@ composition_barplot <- function(scoot_object = NULL,
 #'
 #'
 #' @param scoot_object A scoot class object (typically after applying merge_scoot_objects onto a list of scootObjects)
-#' @param plot.var Column in the scoot_object$composition: either "freq" for cell type relative abundance in percent or "clr" (for centered log-ratio transformed). Default: "clr" as it is better suited for statistical analysis and is better able to also show low abundant cell types.
-#' @param layer Default "layer1" if you have one cell type annotation layer in your scoot_object. Alternatively "layer2" etc. if you have multiple layers of annotation depths.
+#' @param plot_var Column in the scoot_object$composition: either "freq" for cell type relative abundance in percent or "clr" (for centered log-ratio transformed). Default: "clr" as it is better suited for statistical analysis and is better able to also show low abundant cell types.
+#' @param layer Default "layer_1" if you have one cell type annotation layer in your scoot_object. Alternatively "layer_2" etc. if you have multiple layers of annotation depths.
 #' @param return_plot_to_var Optionally, you can save the ggplots to a variable if you would like to further modify and adapt the plots on your own.
 #' @param group_by This allows you to pass a metadata column name present in your scoot_object$metadata to show your samples in groups, for example by "condition".
 #' @param facet_by This allows you to pass a metadata column name present in your scoot_object$metadata to show your samples in facets with ggplot facet_grid, for example by "condition".
@@ -2000,8 +1949,8 @@ composition_barplot <- function(scoot_object = NULL,
 #'
 
 composition_boxplot <- function(scoot_object = NULL,
-                                plot.var = "clr",
-                                layer = "layer1",
+                                plot_var = "clr",
+                                layer = "layer_1",
                                 return_plot_to_var = FALSE,
                                 group_by = NULL,
                                 facet_by = NULL,
@@ -2018,10 +1967,10 @@ composition_boxplot <- function(scoot_object = NULL,
   if (is.null(scoot_object)) {
     stop("Please provide input scoot_object")
   }
-  if (!length(plot.var) == 1 ||
-      !is.character(plot.var) ||
-      !plot.var %in% c("freq", "clr")) {
-    stop("Please provide one character string for plot.var, either 'freq' or 'clr'")
+  if (!length(plot_var) == 1 ||
+      !is.character(plot_var) ||
+      !plot_var %in% c("freq", "clr")) {
+    stop("Please provide one character string for plot_var, either 'freq' or 'clr'")
   }
   if (!length(layer) == 1 || !is.character(layer)) {
     stop("Please provide one character string for layer parameter")
@@ -2055,7 +2004,7 @@ composition_boxplot <- function(scoot_object = NULL,
   comps <- scoot_object@composition[[layer]]
   meta <- scoot_object@metadata
 
-  plot.var.gg <- sym(plot.var)
+  plot_var_gg <- sym(plot_var)
 
   if (is.data.frame(comps)) {
     comp <- merge(comps, meta[, c(sample_col, group_by, facet_by), drop=FALSE], by = sample_col)
@@ -2065,7 +2014,7 @@ composition_boxplot <- function(scoot_object = NULL,
     if (is.null(group_by)) {
       p <- ggboxplot(comp,
                      x = "celltype",
-                     y = plot.var,
+                     y = plot_var,
                      outlier.shape = NA,
                      palette = palette,
                      facet.by = facet_by,
@@ -2074,7 +2023,7 @@ composition_boxplot <- function(scoot_object = NULL,
     } else {
       p <- ggboxplot(comp,
                      x = "celltype",
-                     y = plot.var,
+                     y = plot_var,
                      color = group_by,
                      outlier.shape = NA,
                      palette = palette,
@@ -2112,7 +2061,7 @@ composition_boxplot <- function(scoot_object = NULL,
       if (is.null(group_by)) {
         p_list[["plot_list"]][[ct]] <- ggboxplot(comp,
                                                  x = "celltype",
-                                                 y = plot.var,
+                                                 y = plot_var,
                                                  outlier.shape = NA,
                                                  palette = palette,
                                                  facet.by = facet_by,
@@ -2121,7 +2070,7 @@ composition_boxplot <- function(scoot_object = NULL,
       } else {
         p_list[["plot_list"]][[ct]] <- ggboxplot(comp,
                                                  x = "celltype",
-                                                 y = plot.var,
+                                                 y = plot_var,
                                                  color = group_by,
                                                  outlier.shape = NA,
                                                  palette = palette,
