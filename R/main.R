@@ -1,18 +1,17 @@
-# Function get.HiTObject
-#' Get a HiT object summarizing cell type classification and aggregated profiles.
-#'
+# Function scoot_object
+#' Get a scoot object summarizing cell type classification and aggregated profiles.
 #'
 #'
 #' @param object A Seurat object or a list of Seurat objects
-#' @param group.by List or vector with one or multiple Seurat object metadata columns with cell type predictions to group by (e.g. layer 1 cell type classification)
-#' @param split.by A Seurat object metadata column to split by compositional data (e.g. sample names) \link{get.celltype.composition}
-#' @param min.cells.composition Parameter for internal \link{get.celltype.composition}. Minimum number of cells annotated in a group.by parameter to render the cell type composition. If the number of cells annotated for a certain group.by parameter is less, compositional data will not be rendered. Default value is 10.
-#' @param min.cells.aggregated Parameter for internal \link{get.aggregated.profile} and \link{get.aggregated.signature}. Minimum number of cells per sample and cell type to aggregate data for pseudobulk or aggregated signatures. Aggregated data for cell types with less than that value will not be returned in aggregated data. Default value is 10.
-#' @param name.additional.signatures Names of additional signatures as found in object metadata to take into account.
+#' @param group_by List or vector with one or multiple Seurat object metadata columns with cell type predictions to group by (e.g. layer 1 cell type classification)
+#' @param split_by A Seurat object metadata column to split by compositional data (e.g. sample names) \link{get_celltype_composition}
+#' @param min_cells_composition Parameter for internal \link{get_celltype_composition}. Minimum number of cells annotated in a group_by parameter to render the cell type composition. If the number of cells annotated for a certain group_by parameter is less, compositional data will not be rendered. Default value is 10.
+#' @param min_cells_aggregated Parameter for internal \link{get_aggregated_profile} and \link{get_aggregated_signature}. Minimum number of cells per sample and cell type to aggregate data for pseudobulk or aggregated signatures. Aggregated data for cell types with less than that value will not be returned in aggregated data. Default value is 10.
+#' @param name_additional_signatures Names of additional signatures as found in object metadata to take into account.
 #' @param useNA logical whether to return aggregated profile for NA (undefined) cell types, default is FALSE.
-#' @param clr_zero_impute_perc Parameter for internal \link{get.celltype.composition}.
-#' @param layers_links Parameter for internal \link{get.celltype.composition}
-#' @param assay Parameter for internal \link{get.aggregated.profile}.
+#' @param clr_zero_impute_perc Parameter for internal \link{get_celltype_composition}.
+#' @param layer_links Parameter for internal \link{get_celltype_composition}
+#' @param assay Parameter for internal \link{get_aggregated_profile}.
 #' @param layer1_link Column of metadata linking layer1 prediction (e.g. scGate ~ CellOntology_ID) in order to perform subsetting for second layer classification.
 #'
 #' @importFrom methods setClass new
@@ -21,83 +20,83 @@
 #'
 #' @import SeuratObject
 #'
-#' @return HiT object summarizing cell type classification and aggregated profiles.
-#' @export get.HiTObject
+#' @return scoot object summarizing cell type classification and aggregated profiles.
+#' @export scoot_object
 #'
 
 
-get.HiTObject <- function(object,
-                          group.by = list("layer1" = c("scGate_multi"),
-                                          "layer2" = c("functional.cluster")
-                          ),
-                          split.by = NULL,
-                          min.cells.composition = 10,
-                          min.cells.aggregated = 10,
-                          name.additional.signatures = NULL,
-                          useNA = FALSE,
-                          clr_zero_impute_perc = 1,
-                          layers_links = c("scGate_multi" = "functional.cluster"),
-                          assay = "RNA",
-                          layer1_link = "CellOntology_ID",
+scoot_object <- function(object,
+                         group_by = list("layer1" = c("scGate_multi"),
+                                         "layer2" = c("functional.cluster")
+                         ),
+                         split_by = NULL,
+                         min_cells_composition = 10,
+                         min_cells_aggregated = 10,
+                         name_additional_signatures = NULL,
+                         useNA = FALSE,
+                         clr_zero_impute_perc = 1,
+                         layer_links = c("scGate_multi" = "functional.cluster"),
+                         assay = "RNA",
+                         layer1_link = "CellOntology_ID",
 
-                          ncores = parallelly::availableCores() - 2,
-                          bparam = NULL,
-                          progressbar = TRUE) {
+                         ncores = parallelly::availableCores() - 2,
+                         bparam = NULL,
+                         progressbar = TRUE) {
 
-  args <- list(group.by,
-               split.by,
-               min.cells.composition,
-               min.cells.aggregated,
-               name.additional.signatures,
+  args <- list(group_by,
+               split_by,
+               min_cells_composition,
+               min_cells_aggregated,
+               name_additional_signatures,
                useNA,
                clr_zero_impute_perc,
-               layers_links,
+               layer_links,
                assay,
                layer1_link)
 
   # if object is a single Seurat object, turn into a list
   if (!is.list(object)) {
-    hit.list <- get.HiTObject.helper(object, group.by,
-                                     split.by,
-                                     min.cells.composition,
-                                     min.cells.aggregated,
-                                     name.additional.signatures,
-                                     useNA,
-                                     clr_zero_impute_perc,
-                                     layers_links,
-                                     assay,
-                                     layer1_link)
+    scoot_list <- scoot_object_helper(object, group_by,
+                                      split_by,
+                                      min_cells_composition,
+                                      min_cells_aggregated,
+                                      name_additional_signatures,
+                                      useNA,
+                                      clr_zero_impute_perc,
+                                      layer_links,
+                                      assay,
+                                      layer1_link)
   } else {
     # set parallelization parameters
     param <- set_parallel_params(ncores = ncores,
                                  bparam = bparam,
                                  progressbar = progressbar)
 
-    hit.list <- BiocParallel::bplapply(X = object,
-                                       BPPARAM = param,
-                                       function(x) {
-                                         do.call(get.HiTObject.helper,
-                                                 c(x, args)
-                                         )
-                                       })
+    scoot_list <- BiocParallel::bplapply(X = object,
+                                         BPPARAM = param,
+                                         function(x) {
+                                           do.call(scoot_object_helper,
+                                                   c(x, args)
+                                           )
+                                         })
   }
 
-  return(hit.list)
+  return(scoot_list)
 }
 
-get.HiTObject.helper <- function(object,
-                                 group.by = list("layer1" = c("scGate_multi"),
-                                                 "layer2" = c("functional.cluster")
-                                 ),
-                                 split.by = NULL,
-                                 min.cells.composition = 10,
-                                 min.cells.aggregated = 10,
-                                 name.additional.signatures = NULL,
-                                 useNA = FALSE,
-                                 clr_zero_impute_perc = 1,
-                                 layers_links = c("scGate_multi" = "functional.cluster"),
-                                 assay = "RNA",
-                                 layer1_link = "CellOntology_ID") {
+scoot_object_helper <- function(object,
+                                group_by = list("layer1" = c("scGate_multi"),
+                                                "layer2" = c("functional.cluster")
+                                ),
+                                split_by = NULL,
+                                min_cells_composition = 10,
+                                min_cells_aggregated = 10,
+                                name_additional_signatures = NULL,
+                                useNA = FALSE,
+                                clr_zero_impute_perc = 1,
+                                layer_links = c("scGate_multi" = "functional.cluster"),
+                                assay = "RNA",
+                                layer1_link = "CellOntology_ID") {
 
   if (is.null(object)) {
     stop("Please provide a Seurat object")
@@ -106,125 +105,125 @@ get.HiTObject.helper <- function(object,
   }
 
 
-  if (is.null(group.by)) {
+  if (is.null(group_by)) {
     stop("Please provide at least one grouping variable")
   }
 
-  if (!is.list(group.by)) {
-    group.by <- as.list(group.by)
+  if (!is.list(group_by)) {
+    group_by <- as.list(group_by)
   }
 
-  if (!any(group.by %in% names(object@meta.data))) {
-    stop("Group.by variables ", paste(group.by, collapse = ", "), " not found in metadata")
-  } else if (!all(group.by %in% names(object@meta.data))) {
-    group.by <- group.by[group.by %in% names(object@meta.data)]
-    message("Only found ", paste(group.by, collapse = ", ") , " as grouping variable for HiT Object.")
+  if (!any(group_by %in% names(object@meta.data))) {
+    stop("group_by variables ", paste(group_by, collapse = ", "), " not found in metadata")
+  } else if (!all(group_by %in% names(object@meta.data))) {
+    group_by <- group_by[group_by %in% names(object@meta.data)]
+    message("Only found ", paste(group_by, collapse = ", ") , " as grouping variable for scoot object.")
   }
 
-  for (v in seq_along(group.by)) {
-    if (is.null(names(group.by)[[v]]) || is.na(names(group.by)[[v]])) {
-      names(group.by)[[v]] <- paste0("layer", v)
+  for (v in seq_along(group_by)) {
+    if (is.null(names(group_by)[[v]]) || is.na(names(group_by)[[v]])) {
+      names(group_by)[[v]] <- paste0("layer", v)
     }
   }
 
 
   # Make list of list for layers for predictions slot
-  pred.list <- list()
-  for (a in names(group.by)) {
-    pred.list[[a]] <- list()
-    pred.list[[a]][[group.by[[a]]]] <- object@meta.data[,group.by[[a]], drop = FALSE]
+  pred_list <- list()
+  for (a in names(group_by)) {
+    pred_list[[a]] <- list()
+    pred_list[[a]][[group_by[[a]]]] <- object@meta.data[,group_by[[a]], drop = FALSE]
   }
 
 
 
   # Run extended if object got scGate info
   # Extract values from misc slot from object
-  if (any(group.by == "scGate_multi")) {
-    layer.scgate <- names(group.by[group.by == "scGate_multi"])
-    if (is.null(name.additional.signatures)) {
-      name.additional.signatures <- object@misc$layer1_param$additional.signatures
+  if (any(group_by == "scGate_multi")) {
+    layer.scgate <- names(group_by[group_by == "scGate_multi"])
+    if (is.null(name_additional_signatures)) {
+      name_additional_signatures <- object@misc$layer1_param$additional_signatures
     }
-    scgate.models <- object@misc$layer1_param$scGate_models
+    scgate_models <- object@misc$layer1_param$scGate_models
 
 
-    if (!is.null(name.additional.signatures)) {
-      sig <- grep(paste(name.additional.signatures, collapse = "|"),
+    if (!is.null(name_additional_signatures)) {
+      sig <- grep(paste(name_additional_signatures, collapse = "|"),
                   names(object@meta.data), value = TRUE)
-      sig.df <- object@meta.data[, sig]
-      pred.list[[layer.scgate]][["additional_signatures"]] <- sig.df
+      sig_df <- object@meta.data[, sig]
+      pred_list[[layer.scgate]][["additional_signatures"]] <- sig_df
     }
 
-    if (!is.null(scgate.models)) {
-      scgate <- grep(paste(paste0(scgate.models, "$"), collapse = "|"),
+    if (!is.null(scgate_models)) {
+      scgate <- grep(paste(paste0(scgate_models, "$"), collapse = "|"),
                      names(object@meta.data), value = TRUE)
       scgate.df <- object@meta.data[, scgate]
-      pred.list[[layer.scgate]][["scGate_is.pure"]] <- scgate.df
+      pred_list[[layer.scgate]][["scGate_is.pure"]] <- scgate.df
     }
 
-    if (!is.null(name.additional.signatures) && !is.null(scgate.models)) {
+    if (!is.null(name_additional_signatures) && !is.null(scgate_models)) {
       ucell <- names(object@meta.data)[!names(object@meta.data) %in% c(sig, scgate)] %>%
         grep("_UCell$", ., value = TRUE)
 
       ucell.df <- object@meta.data[, ucell]
 
-      pred.list[[layer.scgate]][["UCell_scores"]] <- ucell.df
+      pred_list[[layer.scgate]][["UCell_scores"]] <- ucell.df
     }
   }
 
   # Run extended if object got ProjecTILs info
   # Extract values from misc slot from object
-  if (any(group.by == "functional.cluster")) {
-    layer.pt <- names(group.by[group.by == "functional.cluster"])
-    pred.list[[layer.pt]][["functional.cluster"]] <- object@meta.data[,"functional.cluster", drop = FALSE]
-    pred.list[[layer.pt]][["functional.cluster.conf"]] <- object@meta.data[,"functional.cluster.conf", drop = FALSE]
+  if (any(group_by == "functional.cluster")) {
+    layer_pt <- names(group_by[group_by == "functional.cluster"])
+    pred_list[[layer_pt]][["functional.cluster"]] <- object@meta.data[,"functional.cluster", drop = FALSE]
+    pred_list[[layer_pt]][["functional.cluster.conf"]] <- object@meta.data[,"functional.cluster.conf", drop = FALSE]
   }
 
 
   # Compute proportions
   # message("\nComputing cell type composition...\n")
 
-  comp.prop <- get.celltype.composition(object,
-                                        group.by.composition = group.by,
-                                        min.cells.composition = min.cells.composition,
-                                        split.by = split.by,
+  comp_prop <- get_celltype_composition(object,
+                                        group_by_composition = group_by,
+                                        min_cells_composition = min_cells_composition,
+                                        split_by = split_by,
                                         useNA = useNA,
                                         clr_zero_impute_perc = clr_zero_impute_perc,
                                         layer1_link = layer1_link,
-                                        layers_links = layers_links)
+                                        layer_links = layer_links)
   # Compute avg expression
   # message("\nComputing aggregated profile...\n")
 
-  avg.expr <- get.aggregated.profile(object,
-                                     group.by.aggregated = group.by,
-                                     min.cells.aggregated = min.cells.aggregated,
+  avg_expr <- get_aggregated_profile(object,
+                                     group_by_aggregated = group_by,
+                                     min_cells_aggregated = min_cells_aggregated,
                                      assay = assay,
                                      useNA = useNA)
 
-  aggr.signature <- get.aggregated.signature(object,
-                                             group.by.aggregated = group.by,
-                                             min.cells.aggregated = min.cells.aggregated,
-                                             name.additional.signatures = name.additional.signatures,
-                                             useNA = useNA)
+  aggr_sig <- get_aggregated_signature(object,
+                                       group_by_aggregated = group_by,
+                                       min_cells_aggregated = min_cells_aggregated,
+                                       name_additional_signatures = name_additional_signatures,
+                                       useNA = useNA)
 
-  hit <- methods::new("HiT",
-                      metadata = object@meta.data,
-                      predictions = pred.list,
-                      aggregated_profile = list("pseudobulk" = avg.expr,
-                                                "signatures" = aggr.signature),
-                      composition = comp.prop
+  scoot <- methods::new("scoot",
+                        metadata = object@meta.data,
+                        predictions = pred_list,
+                        aggregated_profile = list("pseudobulk" = avg_expr,
+                                                  "signatures" = aggr_sig),
+                        composition = comp_prop
   )
-  return(hit)
+  return(scoot)
 }
 
 
 #' Calculate cell type composition or frequencies
 #'
 #' @param object A seurat object
-#' @param group.by.composition The Seurat object metadata column(s) containing celltype annotations (provide as character vector, containing the metadata column name(s))
-#' @param split.by A Seurat object metadata column to split by (e.g. sample names)
-#' @param min.cells.composition Set a minimum threshold for number of cells to calculate relative abundance (e.g. less than 10 cells -> no relative abundance will be calculated)
-#' @param useNA Whether to include not annotated cells or not (labelled as "NA" in the group.by.composition). Can be defined separately for each group.by.composition (provide single boolean or vector of booleans)
-#' @param layers_links Named vector indicating the relation of multiple layer classification, default is \code{c("scGate_multi", "functional.cluster")}. Name of the vector element ought to be layer1 and element layer2. This parameter is used to compute relative compositional data of layer2 within layer1 classes.
+#' @param group_by_composition The Seurat object metadata column(s) containing celltype annotations (provide as character vector, containing the metadata column name(s))
+#' @param split_by A Seurat object metadata column to split by (e.g. sample names)
+#' @param min_cells_composition Set a minimum threshold for number of cells to calculate relative abundance (e.g. less than 10 cells -> no relative abundance will be calculated)
+#' @param useNA Whether to include not annotated cells or not (labelled as "NA" in the group_by_composition). Can be defined separately for each group_by_composition (provide single boolean or vector of booleans)
+#' @param layer_links Named vector indicating the relation of multiple layer classification, default is \code{c("scGate_multi", "functional.cluster")}. Name of the vector element ought to be layer1 and element layer2. This parameter is used to compute relative compositional data of layer2 within layer1 classes.
 #' @param clr_zero_impute_perc To calculate the clr-transformed relative abundance ("clr_freq"), zero values are not allowed and need to be imputed (e.g. by adding a pseudo cell count). Instead of adding a pseudo cell count of flat +1, here a pseudo cell count of +1% of the total cell count will be added to all cell types, to better take into consideration the relative abundance ratios (e.g. adding +1 cell to a total cell count of 10 cells would have a different, i.e. much larger effect, than adding +1 to 1000 cells).
 #' @param layer1_link Column of metadata linking layer1 prediction (e.g. scGate ~ CellOntology_ID) in order to perform subsetting for second layer classification.
 
@@ -235,7 +234,7 @@ get.HiTObject.helper <- function(object,
 #' @importFrom rrapply rrapply
 #'
 #' @return Cell type compositions as a list of data.frames containing cell counts, relative abundance (freq) and clr-transformed freq (freq_clr), respectively.
-#' @export get.celltype.composition
+#' @export get_celltype_composition
 #'
 #' @examples
 #' devtools::install_github('satijalab/seurat-data')
@@ -245,18 +244,18 @@ get.HiTObject.helper <- function(object,
 #' data("panc8")
 #' panc8 = UpdateSeuratObject(object = panc8)
 #' # Calculate overall composition
-#' celltype.compositions.overall <- get.celltype.composition(object = panc8, group.by.composition = "celltype")
+#' celltype_compositions.overall <- get_celltype_composition(object = panc8, group_by_composition = "celltype")
 #'
 #' # Calculate sample-wise composition
 
-#' celltype.compositions.sample_wise <- get.celltype.composition(object = panc8, group.by.composition = "celltype", split.by = "orig.ident")
+#' celltype_compositions.sample_wise <- get_celltype_composition(object = panc8, group_by_composition = "celltype", split_by = "orig.ident")
 #'
-get.celltype.composition <- function(object = NULL,
-                                     group.by.composition = NULL,
-                                     split.by = NULL,
-                                     min.cells.composition = 10,
+get_celltype_composition <- function(object = NULL,
+                                     group_by_composition = NULL,
+                                     split_by = NULL,
+                                     min_cells_composition = 10,
                                      useNA = FALSE,
-                                     layers_links = c("scGate_multi" = "functional.cluster"),
+                                     layer_links = c("scGate_multi" = "functional.cluster"),
                                      clr_zero_impute_perc = 1,
                                      layer1_link = "CellOntology_ID") {
 
@@ -275,32 +274,32 @@ get.celltype.composition <- function(object = NULL,
     stop("Not Seurat object or dataframe included, cannot be processed.\n")
   }
 
-  if (is.null(group.by.composition)) {
-    stop("Please specificy a group.by.composition variable")
+  if (is.null(group_by_composition)) {
+    stop("Please specificy a group_by_composition variable")
   }
 
-  # Assess wheter split.by variable is in metadata
-  if (!is.null(split.by) &&
-      !split.by %in% names(meta.data)) {
-    stop("Split.by variable not found in meta.data!\n")
+  # Assess wheter split_by variable is in metadata
+  if (!is.null(split_by) &&
+      !split_by %in% names(meta.data)) {
+    stop("split_by variable not found in meta.data!\n")
   }
 
   if (length(useNA) != 1 &&
-      length(useNA) != length(group.by.composition)) {
-    stop("useNA variable must be of length 1 or the same length as group.by.composition (group.by)")
+      length(useNA) != length(group_by_composition)) {
+    stop("useNA variable must be of length 1 or the same length as group_by_composition (group_by)")
   }
 
-  # convert group.by.composition to list if not
-  if (!is.list(group.by.composition)) {
-    group.by.composition <- as.list(group.by.composition)
+  # convert group_by_composition to list if not
+  if (!is.list(group_by_composition)) {
+    group_by_composition <- as.list(group_by_composition)
   }
 
 
-  # Rename group.by.composition if not indicated
-  for (v in seq_along(group.by.composition)) {
-    if (is.null(names(group.by.composition)[[v]]) ||
-        is.na(names(group.by.composition)[[v]])) {
-      names(group.by.composition)[[v]] <- group.by.composition[[v]]
+  # Rename group_by_composition if not indicated
+  for (v in seq_along(group_by_composition)) {
+    if (is.null(names(group_by_composition)[[v]]) ||
+        is.na(names(group_by_composition)[[v]])) {
+      names(group_by_composition)[[v]] <- group_by_composition[[v]]
     }
 
   }
@@ -308,71 +307,71 @@ get.celltype.composition <- function(object = NULL,
 
 
   # Keep only grouping variables in metadata
-  if (!any(group.by.composition %in% names(meta.data))) {
-    stop("Group.by variables ", paste(group.by.composition, collapse = ", "), " not found in metadata")
-  } else if (!all(group.by.composition %in% names(meta.data))) {
-    group.present <- group.by.composition %in% names(meta.data)
+  if (!any(group_by_composition %in% names(meta.data))) {
+    stop("group_by variables ", paste(group_by_composition, collapse = ", "), " not found in metadata")
+  } else if (!all(group_by_composition %in% names(meta.data))) {
+    group_present <- group_by_composition %in% names(meta.data)
     # accommodate useNA vector
-    if (length(useNA) == length(group.by.composition)) {
-      useNA <- useNA[group.present]
+    if (length(useNA) == length(group_by_composition)) {
+      useNA <- useNA[group_present]
 
     }
     # keep only grouping variables found in metadata
-    group.by.composition <- group.by.composition[group.present]
-    message("Only found ", paste(group.by.composition, collapse = ", ") , " as grouping variables.")
+    group_by_composition <- group_by_composition[group_present]
+    message("Only found ", paste(group_by_composition, collapse = ", ") , " as grouping variables.")
   }
 
   # Factorize cell type to keep all in compositional data
   meta.data <- meta.data %>%
-    dplyr::mutate_at(unlist(group.by.composition), as.factor)
+    dplyr::mutate_at(unlist(group_by_composition), as.factor)
 
-  # evaluate which layers are included in group.by.composition and layers_links
-  for (l in seq_along(layers_links)) {
-    if (!all(c(names(layers_links[l]), layers_links[l]) %in%
-             group.by.composition)) {
+  # evaluate which layers are included in group_by_composition and layer_links
+  for (l in seq_along(layer_links)) {
+    if (!all(c(names(layer_links[l]), layer_links[l]) %in%
+             group_by_composition)) {
       message("Not computing relative proportion values of layer2 within layer1 for ",
-              paste0(names(layers_links[l]), " -> ", layers_links[l]))
+              paste0(names(layer_links[l]), " -> ", layer_links[l]))
     }
   }
 
 
-  # Rep useNa parameters according to group.by.composition variable
+  # Rep useNa parameters according to group_by_composition variable
   if (length(useNA) == 1) {
-    useNA <- rep(useNA, length(group.by.composition))
+    useNA <- rep(useNA, length(group_by_composition))
   }
 
   # list to store compositions
-  celltype.compositions <- list()
+  celltype_compositions <- list()
 
 
-  for (i in seq_along(group.by.composition)) {
+  for (i in seq_along(group_by_composition)) {
 
     suppressMessages(
       {
         ctable <- compositional_data(data = meta.data,
-                                     split.by = split.by,
-                                     group.by.1 = group.by.composition[[i]],
+                                     split_by = split_by,
+                                     group_by_1 = group_by_composition[[i]],
                                      useNA = useNA[i],
                                      clr_zero_impute_perc = clr_zero_impute_perc)
 
         # stop if very few cells
-        if (sum(ctable$cell_counts) < min.cells.composition) {
+        if (sum(ctable$cell_counts) < min_cells_composition) {
           # Return empty data.frame
           ctable <- ctable[0,]
         }
         # get proportion relative to layer1 types
-        if (group.by.composition[[i]] %in% layers_links) {
+        if (group_by_composition[[i]] %in% layer_links) {
           # stop if very few cells
-          if (sum(ctable$cell_counts) < min.cells.composition) {
+          if (sum(ctable$cell_counts) < min_cells_composition) {
             # Return empty list
             ctable <- list()
           } else {
-            lay <- layers_links[which(layers_links == group.by.composition[[i]])]
+            lay <- layer_links[which(layer_links == group_by_composition[[i]])]
             if (lay %in% names(object@misc$layer2_param)) {
-              meta.split <- split(meta.data,
+              meta_split <- split(meta.data,
                                   meta.data[[names(lay)]])
               # switch list names to cell ontology ID
-              cellonto_dic <- lapply(meta.split, function(x) {
+              cellonto_dic <- lapply(meta_split, function(x) {
                 nam <- unique(x[[names(lay)]])
                 val <- unique(x[[layer1_link]])
                 names(val) <- nam
@@ -388,39 +387,39 @@ get.celltype.composition <- function(object = NULL,
               levs <- levs[!is.na(names(levs))]
 
               # Filter only layer1 cells with representation in layer2
-              meta.split <- meta.split[names(levs)]
+              meta_split <- meta_split[names(levs)]
 
               # add factor to group by layer1
-              for (f in names(meta.split)) {
-                meta.split[[f]]$functional.cluster <- factor(meta.split[[f]]$functional.cluster,
+              for (f in names(meta_split)) {
+                meta_split[[f]]$functional.cluster <- factor(meta_split[[f]]$functional.cluster,
                                                              levels = levs[[f]])
               }
 
-              ctable.split <- lapply(meta.split,
+              ctable_split <- lapply(meta_split,
                                      compositional_data,
-                                     split.by = split.by,
-                                     group.by.1 = group.by.composition[[i]],
+                                     split_by = split_by,
+                                     group_by_1 = group_by_composition[[i]],
                                      useNA = useNA[i])
 
               # If not enough cells, return empty dataframe
-              ctable.split <- lapply(ctable.split,
-                                     function (x) {
-                                       if (sum(x$cell_counts) < min.cells.composition) {
+              ctable_split <- lapply(ctable_split,
+                                     function(x) {
+                                       if (sum(x$cell_counts) < min_cells_composition) {
                                          x[0,]
                                        } else {x}
                                      })
 
-              ctable <- c(ctable.split)
+              ctable <- c(ctable_split)
             }
           }
         }
       })
 
     ## Append
-    celltype.compositions[[names(group.by.composition)[i]]] <- ctable
+    celltype_compositions[[names(group_by_composition)[i]]] <- ctable
   }
 
-  return(celltype.compositions)
+  return(celltype_compositions)
 
 }
 
@@ -432,8 +431,8 @@ get.celltype.composition <- function(object = NULL,
 #'
 #'
 #' @param object A seurat object or a list of seurat objects
-#' @param group.by.aggregated The Seurat object metadata column(s) containing celltype annotations
-#' @param min.cells.aggregated Minimum number of cells per sample and cell type to aggregate data for pseudobulk or aggregated signatures. Aggregated data for cell types with less than that value will not be returned in aggregated data. Default value is 10.
+#' @param group_by_aggregated The Seurat object metadata column(s) containing celltype annotations
+#' @param min_cells_aggregated Minimum number of cells per sample and cell type to aggregate data for pseudobulk or aggregated signatures. Aggregated data for cell types with less than that value will not be returned in aggregated data. Default value is 10.
 #' @param assay Assay to retrieve information. By default "RNA".
 #' @param useNA logical whether to return aggregated profile for NA (undefined) cell types, default is FALSE.
 #' @param ... Extra parameters for internal Seurat functions: AverageExpression, AggregateExpression, FindVariableFeatures
@@ -441,12 +440,12 @@ get.celltype.composition <- function(object = NULL,
 #' @importFrom Seurat AverageExpression AggregateExpression FindVariableFeatures
 #' @importFrom dplyr filter
 #' @return Average and aggregated expression as a list of matrices for all genes and indicated gene lists filtering.
-#' @export get.aggregated.profile
+#' @export get_aggregated_profile
 
 
-get.aggregated.profile <- function(object,
-                                   group.by.aggregated = NULL,
-                                   min.cells.aggregated = 10,
+get_aggregated_profile <- function(object,
+                                   group_by_aggregated = NULL,
+                                   min_cells_aggregated = 10,
                                    assay = "RNA",
                                    useNA = FALSE,
                                    ...) {
@@ -458,52 +457,52 @@ get.aggregated.profile <- function(object,
     }
   }
 
-  if (is.null(group.by.aggregated)) {
-    stop("Please specificy a group.by.aggregated variable")
+  if (is.null(group_by_aggregated)) {
+    stop("Please specificy a group_by_aggregated variable")
   }
 
-  # convert group.by.aggregated to list if not
-  if (!is.list(group.by.aggregated)) {
-    group.by.aggregated <- as.list(group.by.aggregated)
+  # convert group_by_aggregated to list if not
+  if (!is.list(group_by_aggregated)) {
+    group_by_aggregated <- as.list(group_by_aggregated)
   }
 
-  # Rename group.by.aggregated if not indicated
-  for (v in seq_along(group.by.aggregated)) {
-    if (is.null(names(group.by.aggregated)[[v]]) || is.na(names(group.by.aggregated)[[v]])) {
-      names(group.by.aggregated)[[v]] <- group.by.aggregated[[v]]
+  # Rename group_by_aggregated if not indicated
+  for (v in seq_along(group_by_aggregated)) {
+    if (is.null(names(group_by_aggregated)[[v]]) || is.na(names(group_by_aggregated)[[v]])) {
+      names(group_by_aggregated)[[v]] <- group_by_aggregated[[v]]
     }
   }
 
-  if (!any(group.by.aggregated %in% names(object@meta.data))) {
-    stop("Group.by variables ", paste(group.by.aggregated, collapse = ", "), " not found in metadata")
-  } else if (!all(group.by.aggregated %in% names(object@meta.data))) {
-    group.by.aggregated <- group.by.aggregated[group.by.aggregated %in% names(object@meta.data)]
-    message("Only found ", paste(group.by.aggregated, collapse = ", ") , " as grouping variables.")
+  if (!any(group_by_aggregated %in% names(object@meta.data))) {
+    stop("group_by variables ", paste(group_by_aggregated, collapse = ", "), " not found in metadata")
+  } else if (!all(group_by_aggregated %in% names(object@meta.data))) {
+    group_by_aggregated <- group_by_aggregated[group_by_aggregated %in% names(object@meta.data)]
+    message("Only found ", paste(group_by_aggregated, collapse = ", ") , " as grouping variables.")
   }
 
 
-  avg.exp <- list()
+  avg_exp <- list()
 
   # loop over different grouping
-  for (i in names(group.by.aggregated)) {
+  for (i in names(group_by_aggregated)) {
 
     # compute pseudobulk
     suppressWarnings({
 
       # Calculate total (sample) pseudobulks
-      if (i == names(group.by.aggregated)[1]) {
+      if (i == names(group_by_aggregated)[1]) {
 
         # Calculate pseudobulk for ALL cells in sample
-        avg.exp[[i]] <- object@assays[["RNA"]]["counts"]
-        row_names <- row.names(avg.exp[[i]])
-        avg.exp[[i]] <- Matrix::Matrix(rowSums(avg.exp[[i]]))
-        row.names(avg.exp[[i]]) <- row_names
-        colnames(avg.exp[[i]]) <- "all"
+        avg_exp[[i]] <- object@assays[["RNA"]]["counts"]
+        row_names <- row.names(avg_exp[[i]])
+        avg_exp[[i]] <- Matrix::Matrix(rowSums(avg_exp[[i]]))
+        row.names(avg_exp[[i]]) <- row_names
+        colnames(avg_exp[[i]]) <- "all"
 
         # Calculate pseudobulk for only annotated cells in sample
 
         # Subset to remove not annotated cells
-        object <- object[, which(!is.na(object[[group.by.aggregated[[i]]]]))]
+        object <- object[, which(!is.na(object[[group_by_aggregated[[i]]]]))]
 
         # Calculate pseudobulk of all annotated cells
         mat <- object@assays[["RNA"]]["counts"]
@@ -512,51 +511,51 @@ get.aggregated.profile <- function(object,
         row.names(mat) <- row_names
         colnames(mat) <- "all.annotated_only"
 
-        avg.exp[[i]] <- cbind(avg.exp[[i]], mat)
+        avg_exp[[i]] <- cbind(avg_exp[[i]], mat)
       }
 
-      # remove from aggregated data cell with less than min.cells.aggregated
+      # remove from aggregated data cell with less than min_cells_aggregated
       cnts <- compositional_data(object@meta.data,
-                                 group.by.1 = group.by.aggregated[[i]],
-                                 only.counts = TRUE,
+                                 group_by_1 = group_by_aggregated[[i]],
+                                 only_counts = TRUE,
                                  useNA = useNA)
 
       if (nrow(cnts) == 0) {
         next
       }
 
-      # Remove cell types with less than min.cells.aggregated
-      keep <- cnts[cnts[["cell_counts"]] > min.cells.aggregated, 1] %>%
+      # Remove cell types with less than min_cells_aggregated
+      keep <- cnts[cnts[["cell_counts"]] > min_cells_aggregated, 1] %>%
         unlist()
-      object@meta.data$fltr <- object@meta.data[[group.by.aggregated[[i]]]]
+      object@meta.data$fltr <- object@meta.data[[group_by_aggregated[[i]]]]
       object <- object[, as.character(object$fltr) %in% keep]
 
       # Handle not annotated cells being labelled as NA
-      # object@meta.data[[group.by.aggregated[[i]]]] <- as.character(object@meta.data[[group.by.aggregated[[i]]]])
-      # object@meta.data[[group.by.aggregated[[i]]]][is.na(object@meta.data[[group.by.aggregated[[i]]]])] <- "NA"
-      # object@meta.data[[group.by.aggregated[[i]]]] <- as.factor(object@meta.data[[group.by.aggregated[[i]]]])
+      # object@meta.data[[group_by_aggregated[[i]]]] <- as.character(object@meta.data[[group_by_aggregated[[i]]]])
+      # object@meta.data[[group_by_aggregated[[i]]]][is.na(object@meta.data[[group_by_aggregated[[i]]]])] <- "NA"
+      # object@meta.data[[group_by_aggregated[[i]]]] <- as.factor(object@meta.data[[group_by_aggregated[[i]]]])
 
-      if (length(unique(object@meta.data[[group.by.aggregated[[i]]]])) >= 2) {
+      if (length(unique(object@meta.data[[group_by_aggregated[[i]]]])) >= 2) {
         mat <-
           Seurat::AggregateExpression(object,
-                                      group.by = group.by.aggregated[[i]],
+                                      group_by = group_by_aggregated[[i]],
                                       assays = assay,
                                       verbose = FALSE,
                                       ...)[[assay]]
-        avg.exp[[i]] <- cbind(avg.exp[[i]], mat)
+        avg_exp[[i]] <- cbind(avg_exp[[i]], mat)
       } else {
         # Handle case if there is only one cell type
-        col_name <- as.character(unique(object@meta.data[[group.by.aggregated[[i]]]]))
-        colnames(avg.exp[[i]]) <- col_name
+        col_name <- as.character(unique(object@meta.data[[group_by_aggregated[[i]]]]))
+        colnames(avg_exp[[i]]) <- col_name
       }
     })
 
     if (useNA == FALSE) {
       # Drop NA column
-      avg.exp[[i]] <- avg.exp[[i]][, !colnames(avg.exp[[i]]) %in% "NA", drop = FALSE]
+      avg_exp[[i]] <- avg_exp[[i]][, !colnames(avg_exp[[i]]) %in% "NA", drop = FALSE]
     }
   }
-  return(avg.exp)
+  return(avg_exp)
 }
 
 
@@ -566,21 +565,21 @@ get.aggregated.profile <- function(object,
 #'
 #'
 #' @param object A seurat object or metadata data frame.
-#' @param group.by.aggregated The Seurat object metadata column(s) containing celltype annotations (idents).
-#' @param min.cells.aggregated Minimum number of cells per sample and cell type to aggregate data for pseudobulk or aggregated signatures. Aggregated data for cell types with less than that value will not be returned in aggregated data. Default value is 10.
-#' @param name.additional.signatures Names of additional signatures to compute the aggregation per cell type.
+#' @param group_by_aggregated The Seurat object metadata column(s) containing celltype annotations (idents).
+#' @param min_cells_aggregated Minimum number of cells per sample and cell type to aggregate data for pseudobulk or aggregated signatures. Aggregated data for cell types with less than that value will not be returned in aggregated data. Default value is 10.
+#' @param name_additional_signatures Names of additional signatures to compute the aggregation per cell type.
 #' @param fun Function to aggregate the signature, e.g. mean or sum.
 #' @param useNA logical whether to return aggregated signatures for NA (undefined) cell types, default is FALSE.
 
 #' @importFrom dplyr group_by summarize_at filter
 #' @return Aggregated signature score for each indicated cell type grouping Results is NULL of not additional signatures are indicated or present in metadata.
-#' @export get.aggregated.signature
+#' @export get_aggregated_signature
 
 
-get.aggregated.signature <- function(object,
-                                     group.by.aggregated = NULL,
-                                     min.cells.aggregated = 10,
-                                     name.additional.signatures = NULL,
+get_aggregated_signature <- function(object,
+                                     group_by_aggregated = NULL,
+                                     min_cells_aggregated = 10,
+                                     name_additional_signatures = NULL,
                                      fun = mean,
                                      useNA = FALSE) {
 
@@ -598,49 +597,49 @@ get.aggregated.signature <- function(object,
   }
 
 
-  if (is.null(group.by.aggregated)) {
-    stop("Please specificy a group.by.aggregated variable")
+  if (is.null(group_by_aggregated)) {
+    stop("Please specificy a group_by_aggregated variable")
   }
 
-  # convert group.by.aggregated to list if not
-  if (!is.list(group.by.aggregated)) {
-    group.by.aggregated <- as.list(group.by.aggregated)
+  # convert group_by_aggregated to list if not
+  if (!is.list(group_by_aggregated)) {
+    group_by_aggregated <- as.list(group_by_aggregated)
   }
 
-  # Rename group.by.aggregated if not indicated
-  for (v in seq_along(group.by.aggregated)) {
-    if (is.null(names(group.by.aggregated)[[v]]) ||
-        is.na(names(group.by.aggregated)[[v]])) {
-      names(group.by.aggregated)[[v]] <- group.by.aggregated[[v]]
+  # Rename group_by_aggregated if not indicated
+  for (v in seq_along(group_by_aggregated)) {
+    if (is.null(names(group_by_aggregated)[[v]]) ||
+        is.na(names(group_by_aggregated)[[v]])) {
+      names(group_by_aggregated)[[v]] <- group_by_aggregated[[v]]
     }
   }
 
-  if (!any(group.by.aggregated %in% names(meta.data))) {
-    stop("Group.by variables ", paste(group.by.aggregated, collapse = ", "), " not found in metadata")
-  } else if (!all(group.by.aggregated %in% names(meta.data))) {
-    group.by.aggregated <- group.by.aggregated[group.by.aggregated %in% names(meta.data)]
-    message("Only found ", paste(group.by.aggregated, collapse = ", ") , " as grouping variable.")
+  if (!any(group_by_aggregated %in% names(meta.data))) {
+    stop("group_by variables ", paste(group_by_aggregated, collapse = ", "), " not found in metadata")
+  } else if (!all(group_by_aggregated %in% names(meta.data))) {
+    group_by_aggregated <- group_by_aggregated[group_by_aggregated %in% names(meta.data)]
+    message("Only found ", paste(group_by_aggregated, collapse = ", ") , " as grouping variable.")
   }
 
-  if (is.null(name.additional.signatures)) {
-    name.additional.signatures <- object@misc$layer1_param$additional.signatures
+  if (is.null(name_additional_signatures)) {
+    name_additional_signatures <- object@misc$layer1_param$additional_signatures
   }
 
-  if (is.null(name.additional.signatures)) {
+  if (is.null(name_additional_signatures)) {
     message("No additional signatures indicated. Returning NULL")
-    aggr.sig <- NULL
+    aggr_sig <- NULL
   } else {
 
-    if (!any(grepl(paste(name.additional.signatures, collapse = "|"),
+    if (!any(grepl(paste(name_additional_signatures, collapse = "|"),
                    names(meta.data)))) {
       stop("No additional signatures found in this object metadata")
     }
 
-    add.sig.cols <- grep(paste(name.additional.signatures, collapse = "|"),
+    add_sig_cols <- grep(paste(name_additional_signatures, collapse = "|"),
                          names(meta.data), value = TRUE)
 
-    if (length(add.sig.cols) > length(name.additional.signatures)) {
-      for (i in name.additional.signatures) {
+    if (length(add_sig_cols) > length(name_additional_signatures)) {
+      for (i in name_additional_signatures) {
         if (sum(grep(i, names(meta.data))) > 1) {
           meta_cols <- names(meta.data)[grep(i, names(meta.data))]
           message(paste("Signatue", i, "was found in multiple metadata columns:", meta_cols))
@@ -650,44 +649,44 @@ get.aggregated.signature <- function(object,
            Please give them a more unique name, e.g. by appending '_signature' to the name")
     }
 
-    aggr.sig <- list()
+    aggr_sig <- list()
 
-    for (e in names(group.by.aggregated)) {
-      # remove from aggregated data cell with less than min.cells.aggregated
+    for (e in names(group_by_aggregated)) {
+      # remove from aggregated data cell with less than min_cells_aggregated
       cnts <- compositional_data(meta.data,
-                                 group.by.1 = group.by.aggregated[[e]],
-                                 only.counts = TRUE,
+                                 group_by_1 = group_by_aggregated[[e]],
+                                 only_counts = TRUE,
                                  useNA = useNA)
 
-      keep <- cnts[cnts[["cell_counts"]] > min.cells.aggregated, 1] %>%
+      keep <- cnts[cnts[["cell_counts"]] > min_cells_aggregated, 1] %>%
         unlist()
 
 
-      aggr.sig[[e]] <- meta.data %>%
-        dplyr::filter(.data[[group.by.aggregated[[e]]]] %in% keep) %>%
-        dplyr::group_by(.data[[group.by.aggregated[[e]]]]) %>%
-        dplyr::summarize_at(add.sig.cols, fun, na.rm = TRUE)
+      aggr_sig[[e]] <- meta.data %>%
+        dplyr::filter(.data[[group_by_aggregated[[e]]]] %in% keep) %>%
+        dplyr::group_by(.data[[group_by_aggregated[[e]]]]) %>%
+        dplyr::summarize_at(add_sig_cols, fun, na.rm = TRUE)
 
       # filter out NA if useNA=F
       if (!useNA) {
-        aggr.sig[[e]] <- aggr.sig[[e]] %>%
-          dplyr::filter(!is.na(.data[[group.by.aggregated[[e]]]]))
+        aggr_sig[[e]] <- aggr_sig[[e]] %>%
+          dplyr::filter(!is.na(.data[[group_by_aggregated[[e]]]]))
       }
 
-      colnames(aggr.sig[[e]])[1] <- "celltype"
+      colnames(aggr_sig[[e]])[1] <- "celltype"
     }
   }
-  return(aggr.sig)
+  return(aggr_sig)
 }
 
 
 
-#' Merge HiTObjects
+#' Merge scootObjects
 #'
-#' @param hit.object List of HiTObjects
-#' @param group.by If only merging for certain layers of annotation is intended, layers names can be indicated here as vector. Otherwise all layers present in all HiT object will be merged.
-#' @param metadata.vars Variables to keep as metadata. (Default: NULL, keeping unique metadata columns per sample, dropping single-cell metadata)
-#' @param pseudobulk.matrix Paramater to determine whther obtain the pseudobulk matrix as a single matrix (\code{"unique"}), or as one matrix for each cell type in the layer (\code{"list"})
+#' @param scoot_object List of scootObjects
+#' @param group_by If only merging for certain layers of annotation is intended, layers names can be indicated here as vector. Otherwise all layers present in all scoot object will be merged.
+#' @param metadata_vars Variables to keep as metadata. (Default: NULL, keeping unique metadata columns per sample, dropping single-cell metadata)
+#' @param pseudobulk_matrix Paramater to determine whther obtain the pseudobulk matrix as a single matrix (\code{"unique"}), or as one matrix for each cell type in the layer (\code{"list"})
 #' @param ncores The number of cores to use, by default, all available cores - 2.
 #' @param bparam A \code{BiocParallel::bpparam()} object that tells how to parallelize. If provided, it overrides the `ncores` parameter.
 #' @param progressbar Whether to show a progressbar or not
@@ -700,38 +699,38 @@ get.aggregated.signature <- function(object,
 #' @importFrom data.table rbindlist
 #' @importFrom methods slot
 
-#' @return Merged HiTObject
-#' @export merge.HiTObjects
+#' @return Merged scootObject
+#' @export merge_scoot_objects
 #'
 
-merge.HiTObjects <- function(hit.object = NULL,
-                             group.by = NULL,
-                             metadata.vars = NULL,
-                             pseudobulk.matrix = "list",
-                             ncores = parallelly::availableCores() - 2,
-                             bparam = NULL,
-                             progressbar = FALSE,
-                             verbose = FALSE) {
+merge_scoot_objects <- function(scoot_object = NULL,
+                                group_by = NULL,
+                                metadata_vars = NULL,
+                                pseudobulk_matrix = "list",
+                                ncores = parallelly::availableCores() - 2,
+                                bparam = NULL,
+                                progressbar = FALSE,
+                                verbose = FALSE) {
 
-  if (is.null(hit.object) ||
-      !is.list(hit.object)) {
-    stop("Please provide a list of HiT object containing more than one sample")
-    if (suppressWarnings(!all(lapply(hit.object, function(x) {inherits(x, "HiT")})))) {
-      stop("Not all components of the list are HiT objects.")
+  if (is.null(scoot_object) ||
+      !is.list(scoot_object)) {
+    stop("Please provide a list of scoot object containing more than one sample")
+    if (suppressWarnings(!all(lapply(scoot_object, function(x) {inherits(x, "scoot")})))) {
+      stop("Not all components of the list are scoot objects.")
     }
   }
 
   # TODO: delete? -------------------------------
-  # # give name to list of hit objects
-  for (v in seq_along(hit.object)) {
-    if (is.null(names(hit.object)[v]) ||
-        is.na(names(hit.object)[v])) {
-      names(hit.object)[v] <- paste0("Sample", v)
+  # # give name to list of scoot objects
+  for (v in seq_along(scoot_object)) {
+    if (is.null(names(scoot_object)[v]) ||
+        is.na(names(scoot_object)[v])) {
+      names(scoot_object)[v] <- paste0("Sample", v)
     }
   }
 
-  # fetch which layers are included in all HiT objects
-  layers_in_hit <- lapply(hit.object, function(x) {
+  # fetch which layers are included in all scoot objects
+  layers_in_scoot <- lapply(scoot_object, function(x) {
     a <- names(x@composition)
     b <- names(x@aggregated_profile$pseudobulk)
     c <- names(x@aggregated_profile$signatures)
@@ -739,51 +738,51 @@ merge.HiTObjects <- function(hit.object = NULL,
     return(u)
   })
 
-  # if group.by is not NULL retrieve the layers present in HiT object
-  if (is.null(group.by)) {
-    group.by <- unique(unlist(layers_in_hit))
+  # if group_by is not NULL retrieve the layers present in scoot object
+  if (is.null(group_by)) {
+    group_by <- unique(unlist(layers_in_scoot))
   }
 
 
-  if (suppressWarnings(!all(lapply(layers_in_hit, function(x) {any(group.by %in% x)})))) {
-    stop("None of the supplied HiT object contain at least one of these layers: ", paste(group.by, collapse = ", "),
+  if (suppressWarnings(!all(lapply(layers_in_scoot, function(x) {any(group_by %in% x)})))) {
+    stop("None of the supplied scoot object contain at least one of these layers: ", paste(group_by, collapse = ", "),
          ".\nPlease make sure to indicate the name of the layer.")
   } else {
-    present <- sapply(group.by,
+    present <- sapply(group_by,
                       function(char) {
-                        unlist(lapply(layers_in_hit,
+                        unlist(lapply(layers_in_scoot,
                                       function(df) {char %in% df}
                         ))
                       }
     )
 
-    present.sum <- colSums(present)
+    present_sum <- colSums(present)
 
-    for (l in names(group.by)) {
-      message("** ", l, " present in ", present.sum[[l]], " / ", length(hit.object), " HiT objects.")
+    for (l in names(group_by)) {
+      message("** ", l, " present in ", present_sum[[l]], " / ", length(scoot_object), " scoot objects.")
     }
   }
 
-  if (!is.null(metadata.vars)) {
+  if (!is.null(metadata_vars)) {
     if (verbose) {message("\n#### Metadata ####")}
-    if (suppressWarnings(!all(lapply(hit.object, function(x) {any(metadata.vars %in% names(x@metadata))})))) {
-      message("Not all supplied HiT object contain ", paste(metadata.vars, collapse = ", "),
+    if (suppressWarnings(!all(lapply(scoot_object, function(x) {any(metadata_vars %in% names(x@metadata))})))) {
+      message("Not all supplied scoot object contain ", paste(metadata_vars, collapse = ", "),
               "metadata elements in their metadata")
     }
     if (verbose) {
-      in.md <- sapply(metadata.vars,
+      in_md <- sapply(metadata_vars,
                       function(char) {
-                        unlist(lapply(hit.object,
+                        unlist(lapply(scoot_object,
                                       function(df) {char %in% colnames(df@metadata)}
                         ))
                       }
       )
-      in.md.sum <- colSums(in.md)
+      in_md_sum <- colSums(in_md)
 
-      for (l in metadata.vars) {
+      for (l in metadata_vars) {
         message("** ", l, " present in ",
-                in.md.sum[[l]], " / ", length(hit.object),
-                " HiT objects.")
+                in_md_sum[[l]], " / ", length(scoot_object),
+                " scoot objects.")
       }
     }
   }
@@ -793,38 +792,38 @@ merge.HiTObjects <- function(hit.object = NULL,
                                bparam = bparam,
                                progressbar = progressbar)
 
-  # Join data from all HiT objects
+  # Join data from all scoot objects
 
   # Metadata
-  if (is.null(metadata.vars)) {
-    # Per HiTObject from input, get metadata column names which have all the same value.
-    # E.g. each HiTObject is from a specific sample, so each HiTObject has metadata column "Sample" which contains all the same value (e.g. "sample1" for sample 1, "sample2" for sample 2, etc.)
-    # Other metadata columns, e.g. scGate_multi can be dropped, as the merged HiTObject is a summary per sample, so single-cell metadata columns don't make sense.
-    all.names <- list()
-    for (x in names(hit.object)) {
-      all.names[[x]] <- names(hit.object[[x]]@metadata)
+  if (is.null(metadata_vars)) {
+    # Per scootObject from input, get metadata column names which have all the same value.
+    # E.g. each scootObject is from a specific sample, so each scootObject has metadata column "Sample" which contains all the same value (e.g. "sample1" for sample 1, "sample2" for sample 2, etc.)
+    # Other metadata columns, e.g. scGate_multi can be dropped, as the merged scootObject is a summary per sample, so single-cell metadata columns don't make sense.
+    all_names <- list()
+    for (x in names(scoot_object)) {
+      all_names[[x]] <- names(scoot_object[[x]]@metadata)
     }
-    all.names_in.all <- Reduce(intersect, all.names)
+    all_names_in_all <- Reduce(intersect, all_names)
 
     umc <- list()
-    for (x in names(hit.object)) {
-      umc[[x]] <- apply(hit.object[[x]]@metadata[all.names_in.all], 2, function(y) length(unique(y))) == 1
+    for (x in names(scoot_object)) {
+      umc[[x]] <- apply(scoot_object[[x]]@metadata[all_names_in_all], 2, function(y) length(unique(y))) == 1
     }
     umc <- umc %>% Reduce("&", .)
-    metadata.vars <- names(umc)[umc == TRUE]
+    metadata_vars <- names(umc)[umc == TRUE]
   }
-  metadata <- lapply(names(hit.object),
-                     function (x) {hit.object[[x]]@metadata[1, metadata.vars] %>%
-                         mutate(hitme.sample = x)
+  metadata <- lapply(names(scoot_object),
+                     function(x) {scoot_object[[x]]@metadata[1, metadata_vars] %>%
+                         mutate(scoot_sample = x)
                      }
   )
   metadata <- data.table::rbindlist(metadata, use.names=TRUE, fill=TRUE)
 
-  comp.prop <- list()
-  avg.expr <- list()
-  aggr.signature <- list()
+  comp_prop <- list()
+  avg_expr <- list()
+  aggr_sig <- list()
 
-  for (gb in group.by) {
+  for (gb in group_by) {
 
     layer_present <- row.names(present)[present[,gb]]
 
@@ -833,13 +832,13 @@ merge.HiTObjects <- function(hit.object = NULL,
 
     type <- "composition"
 
-    # assess that all HiT objects in the list contain the composition data for that layer
-    is_df_check <- hit.object[layer_present] %>%
+    # assess that all scoot objects in the list contain the composition data for that layer
+    is_df_check <- scoot_object[layer_present] %>%
       lapply(methods::slot, name = type) %>%
       lapply("[[", gb) %>%
       lapply(is.data.frame) %>%
       unlist()
-    is_list_check <- hit.object[layer_present] %>%
+    is_list_check <- scoot_object[layer_present] %>%
       lapply(methods::slot, name = type) %>%
       lapply("[[", gb) %>%
       lapply(function(x) {is.list(x) &!inherits(x, "data.frame")}) %>%
@@ -849,14 +848,14 @@ merge.HiTObjects <- function(hit.object = NULL,
       df <- BiocParallel::bplapply(X = layer_present,
                                    BPPARAM = param,
                                    function(x) {
-                                     hit.object[[x]]@composition[[gb]] %>%
-                                       mutate(hitme.sample = x)
+                                     scoot_object[[x]]@composition[[gb]] %>%
+                                       mutate(scoot_sample = x)
                                    })
       df <- data.table::rbindlist(df, use.names=TRUE, fill=TRUE)
-      comp.prop[[gb]] <- df
+      comp_prop[[gb]] <- df
 
     } else if (all(is_list_check)) {
-      gb_sublevel_unique_names <- hit.object[layer_present] %>%
+      gb_sublevel_unique_names <- scoot_object[layer_present] %>%
         lapply(methods::slot, name = type) %>%
         lapply("[[", gb) %>%
         lapply(names) %>%
@@ -866,13 +865,13 @@ merge.HiTObjects <- function(hit.object = NULL,
         df <- BiocParallel::bplapply(X = layer_present,
                                      BPPARAM = param,
                                      function(x) {
-                                       if (!is.null(hit.object[[x]]@composition[[gb]][[i]])) {
-                                         hit.object[[x]]@composition[[gb]][[i]] %>%
-                                           mutate(hitme.sample = x)
+                                       if (!is.null(scoot_object[[x]]@composition[[gb]][[i]])) {
+                                         scoot_object[[x]]@composition[[gb]][[i]] %>%
+                                           mutate(scoot_sample = x)
                                        }
                                      })
         df <- data.table::rbindlist(df, use.names=TRUE, fill=TRUE)
-        comp.prop[[gb]][[i]] <- df
+        comp_prop[[gb]][[i]] <- df
       }
     }
 
@@ -883,34 +882,34 @@ merge.HiTObjects <- function(hit.object = NULL,
     type <- "pseudobulk"
 
     # Aggregated_profile Pseudobulk
-    celltypes <- lapply(names(hit.object),
+    celltypes <- lapply(names(scoot_object),
                         function(x) {
-                          colnames(hit.object[[x]]@aggregated_profile[[type]][[gb]])
+                          colnames(scoot_object[[x]]@aggregated_profile[[type]][[gb]])
                         }) %>%
       unlist() %>% unique()
 
     for (ct in celltypes) {
-      ct_present <- lapply(names(hit.object),
+      ct_present <- lapply(names(scoot_object),
                            function(x) {
-                             ct %in% colnames(hit.object[[x]]@aggregated_profile[[type]][[gb]]) }) %>%
+                             ct %in% colnames(scoot_object[[x]]@aggregated_profile[[type]][[gb]]) }) %>%
         unlist()
-      layer_ct_present <- names(hit.object)[(names(hit.object) %in% layer_present) & ct_present]
+      layer_ct_present <- names(scoot_object)[(names(scoot_object) %in% layer_present) & ct_present]
       df <- BiocParallel::bplapply(X = layer_ct_present,
                                    BPPARAM = param,
                                    function(x) {
-                                     hit.object[[x]]@aggregated_profile[[type]][[gb]][, ct]
+                                     scoot_object[[x]]@aggregated_profile[[type]][[gb]][, ct]
                                    })
       df <- do.call(cbind, df)
       df <- Matrix::Matrix(df, sparse = TRUE)
       colnames(df) <- layer_ct_present
-      avg.expr[[gb]][[ct]] <- df
+      avg_expr[[gb]][[ct]] <- df
     }
 
     # join each matrix per celltype into a single matrix changing the colnames to accommodate sample source
-    if (tolower(pseudobulk.matrix) == "unique") {
-      avg.expr[[gb]] <- lapply(names(avg.expr[[gb]]),
+    if (tolower(pseudobulk_matrix) == "unique") {
+      avg_expr[[gb]] <- lapply(names(avg_expr[[gb]]),
                                function(x) {
-                                 mat <- avg.expr[[gb]][[x]]
+                                 mat <- avg_expr[[gb]][[x]]
                                  colnames(mat) <- paste(x, colnames(mat), sep = "__")
                                  mat <- mat %>% as.data.frame() %>%
                                    tibble::rownames_to_column("gene")
@@ -931,37 +930,37 @@ merge.HiTObjects <- function(hit.object = NULL,
     df <- BiocParallel::bplapply(X = layer_present,
                                  BPPARAM = param,
                                  function(x) {
-                                   if (!is.null(hit.object[[x]]@aggregated_profile[[type]][[gb]])) {
-                                     hit.object[[x]]@aggregated_profile[[type]][[gb]] %>%
-                                       mutate(hitme.sample = x)
+                                   if (!is.null(scoot_object[[x]]@aggregated_profile[[type]][[gb]])) {
+                                     scoot_object[[x]]@aggregated_profile[[type]][[gb]] %>%
+                                       mutate(scoot_sample = x)
                                    }
                                  })
     df <- data.table::rbindlist(df,
                                 use.names = TRUE,
                                 fill = TRUE)
-    aggr.signature[[gb]] <- df
+    aggr_sig[[gb]] <- df
   }
 
-  hit <- methods::new("HiT",
-                      metadata = metadata,
-                      composition = comp.prop,
-                      aggregated_profile = list("pseudobulk" = avg.expr,
-                                                "signatures" = aggr.signature)
+  scoot <- methods::new("scoot",
+                        metadata = metadata,
+                        composition = comp_prop,
+                        aggregated_profile = list("pseudobulk" = avg_expr,
+                                                  "signatures" = aggr_sig)
   )
-  return(hit)
+  return(scoot)
 }
 
 
 #' Get metrics of cell types pseudobulk clustering
 #'
-#' @param hit.object A Hit class object obtained with \link{get.HiTObject} or pseudobulk raw count matrix (\code{HitObject@aggregated_profile$pseudobulk$layer1})
-#' @param cluster.by Vector indicating the variable for clustering, default is celltype (for the annotation) and sample
-#' @param cluster.by.drop.na Whether to keep (FALSE) or drop (TRUE) NAs present in cluster.by column.
+#' @param scoot_object A scoot class object obtained with \link{scoot_object} or pseudobulk raw count matrix (\code{scootObject@aggregated_profile$pseudobulk$layer1})
+#' @param cluster_by Vector indicating the variable for clustering, default is celltype (for the annotation) and sample
+#' @param cluster_by_drop_na Whether to keep (FALSE) or drop (TRUE) NAs present in cluster_by column.
 #' @param batching Vector indicating the variable for batching to allow calculating scores per batch, to account for batch effect
-#' @param scores Scores to compute clustering of samples based on cell type prediction.
-#' @param modularity.k Number of k-nearest neighbours to use to build graph for the calculation of the modularity score
-#' @param dist.method Method to compute distance between celltypes, default is euclidean.
-#' @param hclust.method Hierarchical clustering method for hclust. Options are: "single", "complete", "average" (= UPGMA), "mcquitty" (= WPGMA), "median" (= WPGMC) or "centroid" (= UPGMC). (See hclust package for details)
+#' @param scores scores to compute clustering of samples based on cell type prediction.
+#' @param modularity_k Number of k-nearest neighbours to use to build graph for the calculation of the modularity score
+#' @param dist_method Method to compute distance between celltypes, default is euclidean.
+#' @param hclust_method Hierarchical clustering method for hclust. Options are: "single", "complete", "average" (= UPGMA), "mcquitty" (= WPGMA), "median" (= WPGMC) or "centroid" (= UPGMC). (See hclust package for details)
 #' @param ntests Number of shuffling events to calculate p-value for scores
 #' @param seed Set seed for random shuffling events to calculate p-value for scores
 #' @param pval.combine Method for combining p-values if calculated using batching. Default is "zmethod" weighted (Stouffer's) Z-method, weighting by sample size per batch. Alternatively, Fisher's method can be used with "fisher".
@@ -969,8 +968,8 @@ merge.HiTObjects <- function(hit.object = NULL,
 #' @param pca_pb_labs_invisible Parameter to pass to fviz_pca defining which labels to plot for pseudobulk PCA, see documentation of fviz_pca for details.
 #' @param pca_sig_labs_invisible Parameter to pass to fviz_pca defining which labels to plot for signatures PCA, see documentation of fviz_pca for details.
 #' @param ndim Number of dimensions to be use for PCA clustering metrics. Default is 10.
-#' @param nVarGenes Number of variable genes to assess samples. Default is 500.
-#' @param black.list List of genes to discard from clustering, if "default" object "default_black_list" object is used. Alternative black listed genes can be provided as a vector or list.
+#' @param nvar_genes Number of variable genes to assess samples. Default is 500.
+#' @param black_list List of genes to discard from clustering, if "default" object "default_black_list" object is used. Alternative black listed genes can be provided as a vector or list.
 #' @param ncores The number of cores to use, by default, all available cores - 2.
 #' @param bparam A \code{BiocParallel::bpparam()} object that tells how to parallelize. If provided, it overrides the `ncores` parameter.
 #' @param progressbar Whether to show a progressbar or not
@@ -999,23 +998,23 @@ merge.HiTObjects <- function(hit.object = NULL,
 #' @importFrom metap sumlog sumz
 
 #' @return Metrics of cell types pseudobulk clustering
-#' @export get.cluster.score
+#' @export get_cluster_score
 #'
 
 
-get.cluster.score <- function(hit.object = NULL,
-                              cluster.by = NULL,
-                              cluster.by.drop.na = TRUE,
+get_cluster_score <- function(scoot_object = NULL,
+                              cluster_by = NULL,
+                              cluster_by_drop_na = TRUE,
                               batching = NULL,
-                              scores = c("Silhouette_isolated", "Silhouette", "Modularity"),
-                              modularity.k = 3,
-                              dist.method = "euclidean",
-                              hclust.method = "complete",
+                              scores = c("silhouette_isolated", "silhouette", "modularity"),
+                              modularity_k = 3,
+                              dist_method = "euclidean",
+                              hclust_method = "complete",
 
                               # For scores p-value calculation
                               ntests = 100, # number of shuffling events
                               seed = 22, # seed for random shuffling
-                              pval.combine.method = "weighted_zmethod",
+                              pval_combine_method = "weighted_zmethod",
 
                               # For PCA
                               pca_comps_labs_invisible = c("quali"),
@@ -1024,48 +1023,48 @@ get.cluster.score <- function(hit.object = NULL,
 
                               # Pseudobulk params
                               ndim = 10,
-                              nVarGenes = 500,
-                              black.list = NULL,
+                              nvar_genes = 500,
+                              black_list = NULL,
 
                               ncores = round(parallelly::availableCores() / 3), # to reduce memory load
                               bparam = NULL,
                               progressbar = TRUE) {
 
-  if (is.null(hit.object) ||
-      !inherits(hit.object, "HiT")) {
-    stop("Please provide a Hit class object or a count matrix.")
+  if (is.null(scoot_object) ||
+      !inherits(scoot_object, "scoot")) {
+    stop("Please provide a scoot class object or a count matrix.")
   }
-  if (is.null(cluster.by)) {
+  if (is.null(cluster_by)) {
     stop("Please provide a metadata column name to cluster by.")
   }
 
-  if (!any(cluster.by %in% names(hit.object@metadata))) {
-    stop("Group.by variables ", paste(cluster.by, collapse = ", "), " not found in metadata")
-  } else if (!all(cluster.by %in% names(hit.object@metadata))) {
-    cluster.by <- cluster.by[cluster.by %in% names(hit.object@metadata)]
-    message("Only found ", paste(cluster.by, collapse = ", ") , " as grouping variable for HiT Object.")
+  if (!any(cluster_by %in% names(scoot_object@metadata))) {
+    stop("group_by variables ", paste(cluster_by, collapse = ", "), " not found in metadata")
+  } else if (!all(cluster_by %in% names(scoot_object@metadata))) {
+    cluster_by <- cluster_by[cluster_by %in% names(scoot_object@metadata)]
+    message("Only found ", paste(cluster_by, collapse = ", ") , " as grouping variable for scoot Object.")
   }
 
   # Need to replace special characters
-  colnames(hit.object@metadata) <- make.names(colnames(hit.object@metadata))
-  cluster.by <- make.names(cluster.by)
+  colnames(scoot_object@metadata) <- make.names(colnames(scoot_object@metadata))
+  cluster_by <- make.names(cluster_by)
 
-  for (i in cluster.by) {
-    if (length(unique(hit.object@metadata[[i]])) == 1) {
-      stop("All values are the same in cluster.by ", i, ". Please provide a metadata column with at least two different groups.")
+  for (i in cluster_by) {
+    if (length(unique(scoot_object@metadata[[i]])) == 1) {
+      stop("All values are the same in cluster_by ", i, ". Please provide a metadata column with at least two different groups.")
     }
   }
 
   # Convert NA to factor level or drop
-  for (i in cluster.by) {
-    if (cluster.by.drop.na) {
-      hit.object@metadata <- hit.object@metadata[!is.na(hit.object@metadata[[i]]), ]
+  for (i in cluster_by) {
+    if (cluster_by_drop_na) {
+      scoot_object@metadata <- scoot_object@metadata[!is.na(scoot_object@metadata[[i]]), ]
     } else {
-      hit.object@metadata[[i]] <- as.character(hit.object@metadata[[i]])
-      hit.object@metadata[[i]][is.na(hit.object@metadata[[i]])] <- "NA"
+      scoot_object@metadata[[i]] <- as.character(scoot_object@metadata[[i]])
+      scoot_object@metadata[[i]][is.na(scoot_object@metadata[[i]])] <- "NA"
     }
-    # cluster.by column must be factor
-    hit.object@metadata[[i]] <- as.factor(hit.object@metadata[[i]])
+    # cluster_by column must be factor
+    scoot_object@metadata[[i]] <- as.factor(scoot_object@metadata[[i]])
   }
 
   scores <- str_to_title(tolower(scores))
@@ -1080,7 +1079,7 @@ get.cluster.score <- function(hit.object = NULL,
 
 
   # Process data ###############################################
-  for (cluster_col in cluster.by) {
+  for (cluster_col in cluster_by) {
     message("Processing ", cluster_col)
 
     ## Process celltype composition ###############################################
@@ -1088,16 +1087,16 @@ get.cluster.score <- function(hit.object = NULL,
 
     type <- "composition"
 
-    comp_layers <- names(hit.object@composition)
+    comp_layers <- names(scoot_object@composition)
 
     for (layer in comp_layers) {
-      if (inherits(hit.object@composition[[layer]], "data.frame")) {
-        mat <- hit.object@composition[[layer]][, c("celltype", "clr", "hitme.sample"), with = FALSE]
-        if (cluster.by.drop.na) {
-          mat <- mat %>% filter(hitme.sample %in% hit.object@metadata[["hitme.sample"]])
+      if (inherits(scoot_object@composition[[layer]], "data.frame")) {
+        mat <- scoot_object@composition[[layer]][, c("celltype", "clr", "scoot_sample"), with = FALSE]
+        if (cluster_by_drop_na) {
+          mat <- mat %>% filter(scoot_sample %in% scoot_object@metadata[["scoot_sample"]])
         }
         mat <- mat %>%
-          tidyr::pivot_wider(names_from = hitme.sample,
+          tidyr::pivot_wider(names_from = scoot_sample,
                              values_from = clr) %>%
           stats::na.omit() %>%
           tibble::column_to_rownames(var = "celltype") %>%
@@ -1105,16 +1104,16 @@ get.cluster.score <- function(hit.object = NULL,
                 scale = FALSE)
 
         if (is.null(batching))  {
-          cluster_labels <- hit.object@metadata %>%
-            dplyr::filter(hitme.sample %in% colnames(mat)) %>%
+          cluster_labels <- scoot_object@metadata %>%
+            dplyr::filter(scoot_sample %in% colnames(mat)) %>%
             .[[cluster_col]]
 
           results[[cluster_col]][[type]][[layer]] <-
-            get.scores(matrix = mat,
+            get_scores(matrix = mat,
                        cluster_labels = cluster_labels,
                        scores = scores,
-                       modularity.k = modularity.k,
-                       dist.method = dist.method,
+                       modularity_k = modularity_k,
+                       dist_method = dist_method,
                        ntests = ntests,
                        seed = seed,
                        title = paste(cluster_col,
@@ -1127,23 +1126,23 @@ get.cluster.score <- function(hit.object = NULL,
           for (b_var in batching) {
             if (b_var != cluster_col) {
               b_var_res_summary <- list()
-              for (b in unique(hit.object@metadata[[b_var]])) {
-                meta <- hit.object@metadata %>%
+              for (b in unique(scoot_object@metadata[[b_var]])) {
+                meta <- scoot_object@metadata %>%
                   dplyr::filter(get(b_var) == b) %>%
-                  dplyr::filter(hitme.sample %in% colnames(mat))
+                  dplyr::filter(scoot_sample %in% colnames(mat))
 
                 cluster_labels <- meta[[cluster_col]]
 
-                m <- mat[ , colnames(mat) %in% as.character(meta[["hitme.sample"]])] %>%
+                m <- mat[ , colnames(mat) %in% as.character(meta[["scoot_sample"]])] %>%
                   scale(center = TRUE,
                         scale = FALSE)
 
                 results[[cluster_col]][[type]][[layer]][[b_var]][[b]] <-
-                  get.scores(matrix = m,
+                  get_scores(matrix = m,
                              cluster_labels = cluster_labels,
                              scores = scores,
-                             modularity.k = modularity.k,
-                             dist.method = dist.method,
+                             modularity_k = modularity_k,
+                             dist_method = dist_method,
                              ntests = ntests,
                              seed = seed,
                              title = paste(cluster_col,
@@ -1153,13 +1152,13 @@ get.cluster.score <- function(hit.object = NULL,
                 for (score in scores) {
                   b_var_res_summary[[score]][["summary"]] <- c(
                     b_var_res_summary[[score]][["summary"]],
-                    results[[cluster_col]][[type]][[layer]][[b_var]][[b]][["Scores"]][[score]][["summary"]])
+                    results[[cluster_col]][[type]][[layer]][[b_var]][[b]][["scores"]][[score]][["summary"]])
                   b_var_res_summary[[score]][["n"]] <- c(
                     b_var_res_summary[[score]][["n"]],
-                    results[[cluster_col]][[type]][[layer]][[b_var]][[b]][["Scores"]][[score]][["n"]])
+                    results[[cluster_col]][[type]][[layer]][[b_var]][[b]][["scores"]][[score]][["n"]])
                   b_var_res_summary[[score]][["p_value"]] <- c(
                     b_var_res_summary[[score]][["p_value"]],
-                    results[[cluster_col]][[type]][[layer]][[b_var]][[b]][["Scores"]][[score]][["p_value"]])
+                    results[[cluster_col]][[type]][[layer]][[b_var]][[b]][["scores"]][[score]][["p_value"]])
                 }
               }
 
@@ -1172,7 +1171,7 @@ get.cluster.score <- function(hit.object = NULL,
                 p_values_not_na_len <- length(p_values_not_na)
                 if (p_values_not_na_len > 1){
                   b_var_res_summary[[score]] <- combine_pvals(b_var_res_summary[[score]],
-                                                              pval.combine.method)
+                                                              pval_combine_method)
                 } else if (p_values_not_na_len == 1) {
                   b_var_res_summary[[score]][["p_value"]] <- p_values_not_na
                 } else {
@@ -1183,23 +1182,23 @@ get.cluster.score <- function(hit.object = NULL,
                 b_var_res_summary[[score]][["n"]] <-
                   sum(b_var_res_summary[[score]][["n"]])
               }
-              results[[cluster_col]][[type]][[layer]][[b_var]][["all"]][["Scores"]] <- b_var_res_summary
+              results[[cluster_col]][[type]][[layer]][[b_var]][["all"]][["scores"]] <- b_var_res_summary
             }
           }
         }
 
-      } else if (is.list(hit.object@composition[[layer]])) {
+      } else if (is.list(scoot_object@composition[[layer]])) {
         results[[cluster_col]][[type]][[layer]] <-
           BiocParallel::bplapply(
-            X = names(hit.object@composition[[layer]]),
+            X = names(scoot_object@composition[[layer]]),
             BPPARAM = param,
             function(i){
-              mat <- hit.object@composition[[layer]][[i]][, c("celltype", "clr", "hitme.sample"), with = F]
-              if (cluster.by.drop.na) {
-                mat <- mat %>% filter(hitme.sample %in% hit.object@metadata[["hitme.sample"]])
+              mat <- scoot_object@composition[[layer]][[i]][, c("celltype", "clr", "scoot_sample"), with = F]
+              if (cluster_by_drop_na) {
+                mat <- mat %>% filter(scoot_sample %in% scoot_object@metadata[["scoot_sample"]])
               }
               mat <- mat %>%
-                tidyr::pivot_wider(names_from = hitme.sample,
+                tidyr::pivot_wider(names_from = scoot_sample,
                                    values_from = clr) %>%
                 tibble::column_to_rownames(var = "celltype")
 
@@ -1207,16 +1206,16 @@ get.cluster.score <- function(hit.object = NULL,
                            scale = FALSE)
 
               if (is.null(batching))  {
-                cluster_labels <- hit.object@metadata %>%
-                  dplyr::filter(hitme.sample %in% colnames(mat)) %>%
+                cluster_labels <- scoot_object@metadata %>%
+                  dplyr::filter(scoot_sample %in% colnames(mat)) %>%
                   .[[cluster_col]]
 
                 if (nrow(mat) > 1) {
-                  res <- get.scores(matrix = mat,
+                  res <- get_scores(matrix = mat,
                                     cluster_labels = cluster_labels,
                                     scores = scores,
-                                    modularity.k = modularity.k,
-                                    dist.method = dist.method,
+                                    modularity_k = modularity_k,
+                                    dist_method = dist_method,
                                     ntests = ntests,
                                     seed = seed,
                                     title = paste(cluster_col,
@@ -1235,23 +1234,23 @@ get.cluster.score <- function(hit.object = NULL,
                 for (b_var in batching) {
                   if (b_var != cluster_col) {
                     b_var_res_summary <- list()
-                    for (b in unique(hit.object@metadata[[b_var]])) {
-                      meta <- hit.object@metadata %>%
+                    for (b in unique(scoot_object@metadata[[b_var]])) {
+                      meta <- scoot_object@metadata %>%
                         dplyr::filter(get(b_var) == b) %>%
-                        dplyr::filter(hitme.sample %in% colnames(mat))
+                        dplyr::filter(scoot_sample %in% colnames(mat))
 
                       cluster_labels <- meta[[cluster_col]]
 
-                      m <- mat[ , colnames(mat) %in% as.character(meta[["hitme.sample"]])] %>%
+                      m <- mat[ , colnames(mat) %in% as.character(meta[["scoot_sample"]])] %>%
                         scale(center = TRUE, scale = FALSE)
 
                       if (nrow(m) > 1) {
                         res[[b_var]][[b]] <-
-                          get.scores(matrix = m,
+                          get_scores(matrix = m,
                                      cluster_labels = cluster_labels,
                                      scores = scores,
-                                     modularity.k = modularity.k,
-                                     dist.method = dist.method,
+                                     modularity_k = modularity_k,
+                                     dist_method = dist_method,
                                      ntests = ntests,
                                      seed = seed,
                                      title = paste(cluster_col,
@@ -1264,13 +1263,13 @@ get.cluster.score <- function(hit.object = NULL,
                       for (score in scores) {
                         b_var_res_summary[[score]][["summary"]] <- c(
                           b_var_res_summary[[score]][["summary"]],
-                          res[[b_var]][[b]][["Scores"]][[score]][["summary"]])
+                          res[[b_var]][[b]][["scores"]][[score]][["summary"]])
                         b_var_res_summary[[score]][["n"]] <- c(
                           b_var_res_summary[[score]][["n"]],
-                          res[[b_var]][[b]][["Scores"]][[score]][["n"]])
+                          res[[b_var]][[b]][["scores"]][[score]][["n"]])
                         b_var_res_summary[[score]][["p_value"]] <- c(
                           b_var_res_summary[[score]][["p_value"]],
-                          res[[b_var]][[b]][["Scores"]][[score]][["p_value"]])
+                          res[[b_var]][[b]][["scores"]][[score]][["p_value"]])
                       }
                     }
 
@@ -1283,7 +1282,7 @@ get.cluster.score <- function(hit.object = NULL,
                       p_values_not_na_len <- length(p_values_not_na)
                       if (p_values_not_na_len > 1) {
                         b_var_res_summary[[score]] <- combine_pvals(b_var_res_summary[[score]],
-                                                                    pval.combine.method)
+                                                                    pval_combine_method)
                       } else if (p_values_not_na_len == 1) {
                         b_var_res_summary[[score]][["p_value"]] <- p_values_not_na
                       } else {
@@ -1294,7 +1293,7 @@ get.cluster.score <- function(hit.object = NULL,
                       b_var_res_summary[[score]][["n"]] <-
                         sum(b_var_res_summary[[score]][["n"]])
                     }
-                    res[[b_var]][["all"]][["Scores"]] <- b_var_res_summary
+                    res[[b_var]][["all"]][["scores"]] <- b_var_res_summary
                   }
                 }
                 if(length(res) == 0) {
@@ -1306,7 +1305,7 @@ get.cluster.score <- function(hit.object = NULL,
             }
           )
         names(results[[cluster_col]][[type]][[layer]]) <-
-          names(hit.object@composition[[layer]])
+          names(scoot_object@composition[[layer]])
       }
     }
 
@@ -1316,34 +1315,34 @@ get.cluster.score <- function(hit.object = NULL,
 
     type <- "pseudobulk"
 
-    pb_layers <- names(hit.object@aggregated_profile[[type]])
+    pb_layers <- names(scoot_object@aggregated_profile[[type]])
 
     for (layer in pb_layers) {
       results[[cluster_col]][[type]][[layer]] <- BiocParallel::bplapply(
-        X = names(hit.object@aggregated_profile[[type]][[layer]]),
+        X = names(scoot_object@aggregated_profile[[type]][[layer]]),
         BPPARAM = param,
         function(i){
-          mat <- hit.object@aggregated_profile[[type]][[layer]][[i]]
-          meta <- hit.object@metadata %>%
-            dplyr::filter(hitme.sample %in% colnames(mat))
+          mat <- scoot_object@aggregated_profile[[type]][[layer]][[i]]
+          meta <- scoot_object@metadata %>%
+            dplyr::filter(scoot_sample %in% colnames(mat))
           cluster_labels <- meta[[cluster_col]]
-          if (cluster.by.drop.na) {
-            mat <- mat[, colnames(mat) %in% as.character(meta[["hitme.sample"]])]
+          if (cluster_by_drop_na) {
+            mat <- mat[, colnames(mat) %in% as.character(meta[["scoot_sample"]])]
           }
 
           if (is.null(batching))  {
             if (length(unique(cluster_labels)) > 1) {
               mat <- preproc_pseudobulk(matrix = mat,
                                         metadata = meta,
-                                        cluster.by = cluster_col,
-                                        nVarGenes = nVarGenes,
-                                        black.list = black.list)
+                                        cluster_by = cluster_col,
+                                        nvar_genes = nvar_genes,
+                                        black_list = black_list)
 
-              res <- get.scores(matrix = mat,
+              res <- get_scores(matrix = mat,
                                 cluster_labels = cluster_labels,
                                 scores = scores,
-                                modularity.k = modularity.k,
-                                dist.method = dist.method,
+                                modularity_k = modularity_k,
+                                dist_method = dist_method,
                                 ntests = ntests,
                                 seed = seed,
                                 title = paste(cluster_col,
@@ -1362,29 +1361,29 @@ get.cluster.score <- function(hit.object = NULL,
             for (b_var in batching) {
               if (b_var != cluster_col) {
                 b_var_res_summary <- list()
-                for (b in unique(hit.object@metadata[[b_var]])) {
-                  met <- hit.object@metadata %>%
+                for (b in unique(scoot_object@metadata[[b_var]])) {
+                  met <- scoot_object@metadata %>%
                     dplyr::filter(get(b_var) == b) %>%
-                    dplyr::filter(hitme.sample %in% colnames(mat))
+                    dplyr::filter(scoot_sample %in% colnames(mat))
 
                   cluster_labels <- met[[cluster_col]]
 
-                  m <- mat[ , colnames(mat) %in% met[["hitme.sample"]]]
+                  m <- mat[ , colnames(mat) %in% met[["scoot_sample"]]]
 
                   if (length(unique(cluster_labels)) > 1) {
                     m <- preproc_pseudobulk(matrix = m,
                                             metadata = met,
-                                            cluster.by = cluster_col,
-                                            nVarGenes = nVarGenes,
-                                            black.list = black.list)
+                                            cluster_by = cluster_col,
+                                            nvar_genes = nvar_genes,
+                                            black_list = black_list)
 
                     if (nrow(m) > 1) {
                       res[[b_var]][[b]] <-
-                        get.scores(matrix = m,
+                        get_scores(matrix = m,
                                    cluster_labels = cluster_labels,
                                    scores = scores,
-                                   modularity.k = modularity.k,
-                                   dist.method = dist.method,
+                                   modularity_k = modularity_k,
+                                   dist_method = dist_method,
                                    ntests = ntests,
                                    seed = seed,
                                    title = paste(cluster_col,
@@ -1397,13 +1396,13 @@ get.cluster.score <- function(hit.object = NULL,
                   for (score in scores) {
                     b_var_res_summary[[score]][["summary"]] <- c(
                       b_var_res_summary[[score]][["summary"]],
-                      res[[b_var]][[b]][["Scores"]][[score]][["summary"]])
+                      res[[b_var]][[b]][["scores"]][[score]][["summary"]])
                     b_var_res_summary[[score]][["n"]] <- c(
                       b_var_res_summary[[score]][["n"]],
-                      res[[b_var]][[b]][["Scores"]][[score]][["n"]])
+                      res[[b_var]][[b]][["scores"]][[score]][["n"]])
                     b_var_res_summary[[score]][["p_value"]] <- c(
                       b_var_res_summary[[score]][["p_value"]],
-                      res[[b_var]][[b]][["Scores"]][[score]][["p_value"]])
+                      res[[b_var]][[b]][["scores"]][[score]][["p_value"]])
                   }
                 }
 
@@ -1416,7 +1415,7 @@ get.cluster.score <- function(hit.object = NULL,
                   p_values_not_na_len <- length(p_values_not_na)
                   if (p_values_not_na_len > 1) {
                     b_var_res_summary[[score]] <- combine_pvals(b_var_res_summary[[score]],
-                                                                pval.combine.method)
+                                                                pval_combine_method)
                   } else if (p_values_not_na_len == 1) {
                     b_var_res_summary[[score]][["p_value"]] <- p_values_not_na
                   } else {
@@ -1427,7 +1426,7 @@ get.cluster.score <- function(hit.object = NULL,
                   b_var_res_summary[[score]][["n"]] <-
                     sum(b_var_res_summary[[score]][["n"]])
                 }
-                res[[b_var]][["all"]][["Scores"]] <- b_var_res_summary
+                res[[b_var]][["all"]][["scores"]] <- b_var_res_summary
               }
             }
             if(length(res) == 0) {
@@ -1439,7 +1438,7 @@ get.cluster.score <- function(hit.object = NULL,
         }
       )
       names(results[[cluster_col]][[type]][[layer]]) <-
-        names(hit.object@aggregated_profile[[type]][[layer]])
+        names(scoot_object@aggregated_profile[[type]][[layer]])
     }
 
 
@@ -1448,23 +1447,23 @@ get.cluster.score <- function(hit.object = NULL,
 
     type <- "signatures"
 
-    comp_layers <- names(hit.object@aggregated_profile[[type]])
+    comp_layers <- names(scoot_object@aggregated_profile[[type]])
 
     if (!is.null(comp_layers)) {
       for (layer in comp_layers) {
-        cols <- colnames(hit.object@aggregated_profile[[type]][[layer]])
-        signatures <- cols[! cols %in% c("celltype", "hitme.sample")]
+        cols <- colnames(scoot_object@aggregated_profile[[type]][[layer]])
+        signatures <- cols[! cols %in% c("celltype", "scoot_sample")]
 
         results[[cluster_col]][[type]][[layer]] <- BiocParallel::bplapply(
           X = signatures,
           BPPARAM = param,
           function(i){
-            mat <- hit.object@aggregated_profile[[type]][[layer]][, c("celltype", i, "hitme.sample"), with = FALSE]
-            if (cluster.by.drop.na) {
-              mat <- mat %>% filter(hitme.sample %in% hit.object@metadata[["hitme.sample"]])
+            mat <- scoot_object@aggregated_profile[[type]][[layer]][, c("celltype", i, "scoot_sample"), with = FALSE]
+            if (cluster_by_drop_na) {
+              mat <- mat %>% filter(scoot_sample %in% scoot_object@metadata[["scoot_sample"]])
             }
             mat <- mat %>%
-              tidyr::pivot_wider(names_from = hitme.sample, values_from = i) %>%
+              tidyr::pivot_wider(names_from = scoot_sample, values_from = i) %>%
               tibble::column_to_rownames(var = "celltype") %>%
               replace(is.na(.), 0)
 
@@ -1476,15 +1475,15 @@ get.cluster.score <- function(hit.object = NULL,
               # Drop columns containing NAN, caused by scaling zero variance columns
               mat <- mat[ , colSums(is.nan(mat)) == 0]
 
-              cluster_labels <- hit.object@metadata %>%
-                filter(hitme.sample %in% colnames(mat)) %>%
+              cluster_labels <- scoot_object@metadata %>%
+                filter(scoot_sample %in% colnames(mat)) %>%
                 .[[cluster_col]]
 
-              res <- get.scores(matrix = mat,
+              res <- get_scores(matrix = mat,
                                 cluster_labels = cluster_labels,
                                 scores = scores,
-                                modularity.k = modularity.k,
-                                dist.method = dist.method,
+                                modularity_k = modularity_k,
+                                dist_method = dist_method,
                                 ntests = ntests,
                                 seed = seed,
                                 title = paste(cluster_col,
@@ -1500,14 +1499,14 @@ get.cluster.score <- function(hit.object = NULL,
               for (b_var in batching) {
                 if (b_var != cluster_col) {
                   b_var_res_summary <- list()
-                  for (b in unique(hit.object@metadata[[b_var]])) {
-                    meta <- hit.object@metadata %>%
+                  for (b in unique(scoot_object@metadata[[b_var]])) {
+                    meta <- scoot_object@metadata %>%
                       dplyr::filter(get(b_var) == b) %>%
-                      dplyr::filter(hitme.sample %in% colnames(mat))
+                      dplyr::filter(scoot_sample %in% colnames(mat))
 
                     cluster_labels <- meta[[cluster_col]]
 
-                    m <- mat[ , colnames(mat) %in% as.character(meta[["hitme.sample"]])] %>%
+                    m <- mat[ , colnames(mat) %in% as.character(meta[["scoot_sample"]])] %>%
                       scale(center = TRUE,
                             scale = TRUE)
 
@@ -1515,11 +1514,11 @@ get.cluster.score <- function(hit.object = NULL,
                     m <- m[ , colSums(is.nan(m)) == 0]
 
                     res[[b_var]][[b]] <-
-                      get.scores(matrix = m,
+                      get_scores(matrix = m,
                                  cluster_labels = cluster_labels,
                                  scores = scores,
-                                 modularity.k = modularity.k,
-                                 dist.method = dist.method,
+                                 modularity_k = modularity_k,
+                                 dist_method = dist_method,
                                  ntests = ntests,
                                  seed = seed,
                                  title = paste(cluster_col,
@@ -1530,13 +1529,13 @@ get.cluster.score <- function(hit.object = NULL,
                     for (score in scores) {
                       b_var_res_summary[[score]][["summary"]] <- c(
                         b_var_res_summary[[score]][["summary"]],
-                        res[[b_var]][[b]][["Scores"]][[score]][["summary"]])
+                        res[[b_var]][[b]][["scores"]][[score]][["summary"]])
                       b_var_res_summary[[score]][["n"]] <- c(
                         b_var_res_summary[[score]][["n"]],
-                        res[[b_var]][[b]][["Scores"]][[score]][["n"]])
+                        res[[b_var]][[b]][["scores"]][[score]][["n"]])
                       b_var_res_summary[[score]][["p_value"]] <- c(
                         b_var_res_summary[[score]][["p_value"]],
-                        res[[b_var]][[b]][["Scores"]][[score]][["p_value"]])
+                        res[[b_var]][[b]][["scores"]][[score]][["p_value"]])
                     }
                   }
 
@@ -1549,7 +1548,7 @@ get.cluster.score <- function(hit.object = NULL,
                     p_values_not_na_len <- length(p_values_not_na)
                     if (p_values_not_na_len > 1) {
                       b_var_res_summary[[score]] <- combine_pvals(b_var_res_summary[[score]],
-                                                                  pval.combine.method)
+                                                                  pval_combine_method)
                     } else if (p_values_not_na_len == 1) {
                       b_var_res_summary[[score]][["p_value"]] <- p_values_not_na
                     } else {
@@ -1560,7 +1559,7 @@ get.cluster.score <- function(hit.object = NULL,
                     b_var_res_summary[[score]][["n"]] <-
                       sum(b_var_res_summary[[score]][["n"]])
                   }
-                  res[[b_var]][["all"]][["Scores"]] <- b_var_res_summary
+                  res[[b_var]][["all"]][["scores"]] <- b_var_res_summary
                 }
               }
               if(length(res) == 0) {
@@ -1576,8 +1575,8 @@ get.cluster.score <- function(hit.object = NULL,
     }
   }
 
-  # Save user set parameters for summarize.cluster.scores
-  results[["params"]][["cluster.by"]] <- cluster.by
+  # Save user set parameters for summarize_cluster_scores
+  results[["params"]][["cluster_by"]] <- cluster_by
   results[["params"]][["batching"]] <- batching
   results[["params"]][["scores"]] <- scores
 
@@ -1589,12 +1588,12 @@ get.cluster.score <- function(hit.object = NULL,
 
 #' Summarize scores and plot heat map
 #'
-#' @param data Output from get.cluster.scores
+#' @param data Output from get_cluster_scores
 #' @param topN Integer indicating number of topN highest scoring (most discriminating) features ranked for each score
 #' @param create_plots Boolean indicating whether to create and show plots or not
-#' @param p.adjustment Whether to adjust p-value columns or not
-#' @param p.adjust.method Method for adjusting p-values (see stats::p.adjust for methods)
-#' @param p.value_cutoff p-value (mean of all p-value columns) cutoff to filter out non-significant results
+#' @param p_adjustment Whether to adjust p-value columns or not
+#' @param p_adjust_method Method for adjusting p-values (see stats::p.adjust for methods)
+#' @param p_value_cutoff p-value (mean of all p-value columns) cutoff to filter out non-significant results
 #'
 #' @importFrom dplyr mutate filter
 #' @importFrom tidyr pivot_wider
@@ -1607,24 +1606,24 @@ get.cluster.score <- function(hit.object = NULL,
 #' @importFrom ggplotify as.ggplot
 #'
 #' @return Average silhouette widths per grouping variable. Optionally, a heatmap plot for visualization
-#' @export summarize.cluster.scores
+#' @export summarize_cluster_scores
 #'
 
 
-summarize.cluster.scores <- function(data = NULL,
+summarize_cluster_scores <- function(data = NULL,
                                      topN = NULL,
                                      create_plots = TRUE,
-                                     p.adjustment = TRUE,
-                                     p.adjust.method = "fdr",
-                                     p.value_cutoff = 0.05) {
+                                     p_adjustment = TRUE,
+                                     p_adjust_method = "fdr",
+                                     p_value_cutoff = 0.05) {
 
   show.variables <- c(".summary", ".n", ".p_value")
 
   if (is.null(data)) {
-    message("Please provide scores object (output from get.cluster.scores)")
+    message("Please provide scores object (output from get_cluster_scores)")
   }
 
-  cluster.by <- data[["params"]][["cluster.by"]]
+  cluster_by <- data[["params"]][["cluster_by"]]
   batching <- data[["params"]][["batching"]]
   scores <- data[["params"]][["scores"]]
 
@@ -1637,7 +1636,7 @@ summarize.cluster.scores <- function(data = NULL,
     data_conts_temp <- data_conts[endsWith(names(data_conts), par)]
 
     if (!is.null(batching)) {
-      data_conts_temp <- data_conts_temp[grepl(".all.Scores.",
+      data_conts_temp <- data_conts_temp[grepl(".all.scores.",
                                                names(data_conts_temp))]
       names(data_conts_temp) <- gsub("all.", "", names(data_conts_temp))
     }
@@ -1658,7 +1657,7 @@ summarize.cluster.scores <- function(data = NULL,
         t() %>%
         as.data.frame()
 
-      row.names(df) <- gsub(".Scores.",
+      row.names(df) <- gsub(".scores.",
                             "",
                             row.names(df))
 
@@ -1688,42 +1687,42 @@ summarize.cluster.scores <- function(data = NULL,
   row.names(df) <- df$Row.names
   df$Row.names <- NULL
 
-  df_cluster.by_list <- list()
-  for (c in cluster.by) {
-    df_cluster.by_list[[c]] <- df %>%
+  df_cluster_by_list <- list()
+  for (c in cluster_by) {
+    df_cluster_by_list[[c]] <- df %>%
       dplyr::filter(row.names(.) %>%
-               startsWith(c))
-    row.names(df_cluster.by_list[[c]]) <- gsub(paste0(c, "."),
+                      startsWith(c))
+    row.names(df_cluster_by_list[[c]]) <- gsub(paste0(c, "."),
                                                "",
-                                               row.names(df_cluster.by_list[[c]]))
+                                               row.names(df_cluster_by_list[[c]]))
     # Remove batching variable name
     if (!is.null(batching)) {
       batch_names <- batching[!batching %in% c]
       batch_names <- batch_names %>%
         paste0(".", .) %>%
         paste(collapse = "|")
-      row.names(df_cluster.by_list[[c]]) <- gsub(batch_names,
+      row.names(df_cluster_by_list[[c]]) <- gsub(batch_names,
                                                  "",
-                                                 row.names(df_cluster.by_list[[c]]))
+                                                 row.names(df_cluster_by_list[[c]]))
     }
 
     # Adjust p-values and filter
-    if (p.adjustment) {
+    if (p_adjustment) {
       p_val_cols <- which(grepl(".p_value",
-                                colnames(df_cluster.by_list[[c]])))
+                                colnames(df_cluster_by_list[[c]])))
       for (i in p_val_cols){
-        df_cluster.by_list[[c]][, i] <-
-          stats::p.adjust(df_cluster.by_list[[c]][, i],
-                          method = p.adjust.method)
+        df_cluster_by_list[[c]][, i] <-
+          stats::p.adjust(df_cluster_by_list[[c]][, i],
+                          method = p_adjust_method)
       }
 
-      df_cluster.by_list[[c]] <-
-        df_cluster.by_list[[c]][rowMeans(df_cluster.by_list[[c]][, p_val_cols]) <= p.value_cutoff, ]
+      df_cluster_by_list[[c]] <-
+        df_cluster_by_list[[c]][rowMeans(df_cluster_by_list[[c]][, p_val_cols]) <= p_value_cutoff, ]
 
-      df_cluster.by_list[[c]] <- stats::na.omit(df_cluster.by_list[[c]])
+      df_cluster_by_list[[c]] <- stats::na.omit(df_cluster_by_list[[c]])
 
-      if (nrow(df_cluster.by_list[[c]]) == 0) {
-        df_cluster.by_list[[c]] <- NULL
+      if (nrow(df_cluster_by_list[[c]]) == 0) {
+        df_cluster_by_list[[c]] <- NULL
         message(paste("For ", c, " no separation was found after p-value cutoff. You can try to set it higher."))
 
         next
@@ -1735,25 +1734,25 @@ summarize.cluster.scores <- function(data = NULL,
         is.numeric(topN) &&
         length(topN) == 1) {
       summary_score_cols <- which(grepl(".summary",
-                                        colnames(df_cluster.by_list[[c]])))
+                                        colnames(df_cluster_by_list[[c]])))
       topN_rownames <- c()
       for (i in summary_score_cols) {
-        topN_rownames_i <- row.names(df_cluster.by_list[[c]])[
-          order(df_cluster.by_list[[c]][, i], decreasing = TRUE)][1:topN]
+        topN_rownames_i <- row.names(df_cluster_by_list[[c]])[
+          order(df_cluster_by_list[[c]][, i], decreasing = TRUE)][1:topN]
         topN_rownames <- c(topN_rownames,
                            topN_rownames_i)
       }
-      df_cluster.by_list[[c]] <- df_cluster.by_list[[c]][unique(topN_rownames), ]
+      df_cluster_by_list[[c]] <- df_cluster_by_list[[c]][unique(topN_rownames), ]
     }
   }
 
   # Remove NULL elements
-  df_cluster.by_list <- Filter(Negate(is.null), df_cluster.by_list)
+  df_cluster_by_list <- Filter(Negate(is.null), df_cluster_by_list)
 
-  # Check if all df_cluster.by_list were NULL
-  if (length(df_cluster.by_list) == 0) {
+  # Check if all df_cluster_by_list were NULL
+  if (length(df_cluster_by_list) == 0) {
 
-    message("No significant separation found for cluster.by provided")
+    message("No significant separation found for cluster_by provided")
 
   } else {
 
@@ -1761,8 +1760,8 @@ summarize.cluster.scores <- function(data = NULL,
       df_list <- list()
       plot_list <- list()
 
-      for (n in names(df_cluster.by_list)) {
-        df <- stats::na.omit(df_cluster.by_list[[n]])
+      for (n in names(df_cluster_by_list)) {
+        df <- stats::na.omit(df_cluster_by_list[[n]])
 
         n_breaks <- min(100, dim(df)[1] * dim(df)[2])
         quantiles <- seq(0, 1, 1/n_breaks)
@@ -1805,16 +1804,16 @@ summarize.cluster.scores <- function(data = NULL,
                                              cluster_rows = FALSE,
                                              silent = TRUE)[[4]]
       }
-      df_cluster.by_list[["plots"]][["plot_list"]] <- plot_list
+      df_cluster_by_list[["plots"]][["plot_list"]] <- plot_list
 
       g <- gridExtra::grid.arrange(
         gridExtra::arrangeGrob(grobs = plot_list,
-                               ncol=length(plot_list))
+                               ncol = length(plot_list))
       )
-      df_cluster.by_list[["plots"]][["summary_plot"]] <- ggplotify::as.ggplot(g)
+      df_cluster_by_list[["plots"]][["summary_plot"]] <- ggplotify::as.ggplot(g)
     }
 
-    return(df_cluster.by_list)
+    return(df_cluster_by_list)
   }
 }
 
@@ -1824,41 +1823,41 @@ summarize.cluster.scores <- function(data = NULL,
 #' Render plots summarizing celltype proportions and distribution in samples
 #'
 #'
-#' @param obj.list List of Seurat objects
-#' @param annot.col Metadata column(s) containing the cell type annotations
-#' @param bottom.mar Adjustable bottom margin for long sample names
+#' @param obj_list List of Seurat objects
+#' @param annot_col Metadata column(s) containing the cell type annotations
+#' @param bottom_mar Adjustable bottom margin for long sample names
 
 #' @importFrom stats setNames
 
 #' @return Get percentage of not annotated cells per sample and plot it.
-#' @export nas.per.sample
+#' @export nas_per_sample
 #'
 
-nas.per.sample <- function (obj.list = NULL,
-                            annot.col = c("scGate_multi"),
-                            return.plot = TRUE,
-                            bottom.mar = 10.2) {
-  if (is.null(obj.list) &
-      !is.list(obj.list) &
-      !all(lapply(obj.list, inherits, "Seurat"))) {
+nas_per_sample <- function(obj_list = NULL,
+                           annot_col = c("scGate_multi"),
+                           return_plot = TRUE,
+                           bottom_mar = 10.2) {
+  if (is.null(obj_list) &
+      !is.list(obj_list) &
+      !all(lapply(obj_list, inherits, "Seurat"))) {
     stop("Please provide a list of seurat objects")
   }
 
   na_list <- list()
 
-  for (col in annot.col) {
+  for (col in annot_col) {
     na_perc_per_sample <- c()
-    for (i in names(obj.list)) {
-      if (col %in% names(obj.list[[i]]@meta.data)) {
-        percs <- prop.table(table(obj.list[[i]]@meta.data[[col]], useNA = "ifany"))*100
+    for (i in names(obj_list)) {
+      if (col %in% names(obj_list[[i]]@meta.data)) {
+        percs <- prop.table(table(obj_list[[i]]@meta.data[[col]], useNA = "ifany"))*100
         nas_perc <- unname(percs[is.na(names(percs))])
         na_perc_per_sample <- c(na_perc_per_sample, stats::setNames(nas_perc, i))
       } else {
-        stop(paste(col, " not found in obj.list item ", i))
+        stop(paste(col, " not found in obj_list item ", i))
       }
     }
-    par(mar = c(bottom.mar, 4.1, 4.1, 2.1))
-    if (return.plot) {
+    par(mar = c(bottom_mar, 4.1, 4.1, 2.1))
+    if (return_plot) {
       barplot(na_perc_per_sample,
               main = col,
               ylab = "Percentage of NA values",
@@ -1875,71 +1874,71 @@ nas.per.sample <- function (obj.list = NULL,
 #' Render bar plots summarizing celltype proportions and distribution in samples and groups
 #'
 #'
-#' @param hit.object A Hit class object (typically after applying merge.HiTObjects onto a list of HiTObjects)
-#' @param layer Default "layer1" if you have one cell type annotation layer in your hit.object. Alternatively "layer2" etc. if you have multiple layers of annotation depths.
-#' @param return.plot.to.var Optionally, you can save the ggplots to a variable if you would like to further modify and adapt the plots on your own.
-#' @param facet.by This allows you to pass a metadata column name present in your hit.object$metadata to show your samples in facets with ggplot facet_grid, for example by "condition".
+#' @param scoot_object A scoot class object (typically after applying merge_scoot_objects onto a list of scootObjects)
+#' @param layer Default "layer1" if you have one cell type annotation layer in your scoot_object. Alternatively "layer2" etc. if you have multiple layers of annotation depths.
+#' @param return_plot_to_var Optionally, you can save the ggplots to a variable if you would like to further modify and adapt the plots on your own.
+#' @param facet_by This allows you to pass a metadata column name present in your scoot_object$metadata to show your samples in facets with ggplot facet_grid, for example by "condition".
 
 #' @importFrom ggplot2 ggplot aes geom_bar theme element_text ggtitle facet_grid
 #' @importFrom stats reformulate
 #' @importFrom patchwork wrap_plots
 
-#' @return Plotting function to show the cell type composition from HiTME object across different samples.
-#' @export composition.barplot
+#' @return Plotting function to show the cell type composition from scoot object across different samples.
+#' @export composition_barplot
 #'
 
-composition.barplot <- function (hit.object = NULL,
-                                 sample.col = NULL,
-                                 layer = "layer1",
-                                 return.plot.to.var = FALSE,
-                                 facet.by = NULL) {
+composition_barplot <- function(scoot_object = NULL,
+                                sample_col = NULL,
+                                layer = "layer1",
+                                return_plot_to_var = FALSE,
+                                facet_by = NULL) {
 
   # Need to replace special characters
-  colnames(hit.object@metadata) <- make.names(colnames(hit.object@metadata))
+  colnames(scoot_object@metadata) <- make.names(colnames(scoot_object@metadata))
 
-  sample.col <- "hitme.sample"
+  sample_col <- "scoot_sample"
 
-  if (is.null(hit.object)) {
-    stop("Please provide input hit.object")
+  if (is.null(scoot_object)) {
+    stop("Please provide input scoot_object")
   }
   if (!length(layer) == 1 || !is.character(layer)) {
     stop("Please provide one character string for layer parameter")
   }
-  if (!is.null(facet.by)) {
-    if (!is.character(facet.by)) {
-      stop("Please provide a character string or a vector of character strings for the facet.by parameter")
+  if (!is.null(facet_by)) {
+    if (!is.character(facet_by)) {
+      stop("Please provide a character string or a vector of character strings for the facet_by parameter")
     }
-    facet.by <- make.names(facet.by)
-    facet.by.in.colnames <- facet.by %in% names(hit.object@metadata)
-    if (!all(facet.by.in.colnames)) {
-      facet.by.not.in.colnames <- facet.by[!facet.by.in.colnames]
-      stop(paste("facet.by ", facet.by.not.in.colnames, " not found in hit.object@metadata column names"))
+    facet_by <- make.names(facet_by)
+    facet_by_in_colnames <- facet_by %in% names(scoot_object@metadata)
+    if (!all(facet_by_in_colnames)) {
+      facet_by_not_in_colnames <- facet_by[!facet_by_in_colnames]
+      stop(paste("facet_by ", facet_by_not_in_colnames, " not found in scoot_object@metadata column names"))
     }
   }
 
 
-  comps <- hit.object@composition[[layer]]
-  meta <- hit.object@metadata
+  comps <- scoot_object@composition[[layer]]
+  meta <- scoot_object@metadata
 
-  if (!is.null(facet.by)) {
-    facet.by_reformulate <- reformulate(facet.by)
+  if (!is.null(facet_by)) {
+    facet_by_reformulate <- reformulate(facet_by)
   }
 
   if (is.data.frame(comps)) {
-    comp <- merge(comps, meta[, c(sample.col, facet.by), drop=FALSE], by = sample.col)
+    comp <- merge(comps, meta[, c(sample_col, facet_by), drop=FALSE], by = sample_col)
 
-    p <- ggplot(comp, aes(x = hitme.sample, y = freq, fill = celltype)) +
+    p <- ggplot(comp, aes(x = scoot_sample, y = freq, fill = celltype)) +
       geom_bar(stat = "identity") +
-      theme(axis.text.x = element_text(angle = 45, hjust=1))
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-    if (!is.null(facet.by)) {
+    if (!is.null(facet_by)) {
 
-      p <- p + facet_grid(facet.by_reformulate,
+      p <- p + facet_grid(facet_by_reformulate,
                           space  = "free",
                           scales = "free")
     }
 
-    if (return.plot.to.var) {
+    if (return_plot_to_var) {
       return(p)
     } else {
       print(p)
@@ -1949,18 +1948,18 @@ composition.barplot <- function (hit.object = NULL,
   else {
     p_list <- list()
     for (ct in names(comps)) {
-      comp <- hit.object@composition[[layer]][[ct]]
-      comp <- merge(comp, meta[, c(sample.col, facet.by), drop=FALSE], by = sample.col)
+      comp <- scoot_object@composition[[layer]][[ct]]
+      comp <- merge(comp, meta[, c(sample_col, facet_by), drop=FALSE], by = sample_col)
 
-      p_list[["plot_list"]][[ct]] <- ggplot(comp, aes(x = hitme.sample, y = freq, fill = celltype)) +
+      p_list[["plot_list"]][[ct]] <- ggplot(comp, aes(x = scoot_sample, y = freq, fill = celltype)) +
         geom_bar(stat = "identity") +
         ggtitle(ct) +
         theme(axis.text.x = element_text(angle = 45, hjust=1)) +
         ggtitle(ct)
 
-      if (!is.null(facet.by)) {
+      if (!is.null(facet_by)) {
         p_list[["plot_list"]][[ct]] <- p_list[["plot_list"]][[ct]] +
-          facet_grid(facet.by_reformulate,
+          facet_grid(facet_by_reformulate,
                      space  = "free",
                      scales = "free")
       }
@@ -1968,7 +1967,7 @@ composition.barplot <- function (hit.object = NULL,
     }
     p_list[["arranged_plots"]] <- patchwork::wrap_plots(p_list[["plot_list"]])
 
-    if (return.plot.to.var) {
+    if (return_plot_to_var) {
       return(p_list)
     } else {
       print(p_list[["arranged_plots"]])
@@ -1980,44 +1979,44 @@ composition.barplot <- function (hit.object = NULL,
 #' Render box plots summarizing celltype proportions and distribution in samples and groups
 #'
 #'
-#' @param hit.object A Hit class object (typically after applying merge.HiTObjects onto a list of HiTObjects)
-#' @param plot.var Column in the hit.object$composition: either "freq" for cell type relative abundance in percent or "clr" (for centered log-ratio transformed). Default: "clr" as it is better suited for statistical analysis and is better able to also show low abundant cell types.
-#' @param layer Default "layer1" if you have one cell type annotation layer in your hit.object. Alternatively "layer2" etc. if you have multiple layers of annotation depths.
-#' @param return.plot.to.var Optionally, you can save the ggplots to a variable if you would like to further modify and adapt the plots on your own.
-#' @param group.by This allows you to pass a metadata column name present in your hit.object$metadata to show your samples in groups, for example by "condition".
-#' @param facet.by This allows you to pass a metadata column name present in your hit.object$metadata to show your samples in facets with ggplot facet_grid, for example by "condition".
-#' @param pval.method Specify method how to calculate the p-value. Wilcoxon test is recommended as compositional data might not fullfill the assumption of a gaussian distribution. For alternatives, see documentation of ggpubr::stat_pwc.
-#' @param p.adjust.method Method for adjusting p-values (see ggpubr::stat_pwc for available methods)
+#' @param scoot_object A scoot class object (typically after applying merge_scoot_objects onto a list of scootObjects)
+#' @param plot.var Column in the scoot_object$composition: either "freq" for cell type relative abundance in percent or "clr" (for centered log-ratio transformed). Default: "clr" as it is better suited for statistical analysis and is better able to also show low abundant cell types.
+#' @param layer Default "layer1" if you have one cell type annotation layer in your scoot_object. Alternatively "layer2" etc. if you have multiple layers of annotation depths.
+#' @param return_plot_to_var Optionally, you can save the ggplots to a variable if you would like to further modify and adapt the plots on your own.
+#' @param group_by This allows you to pass a metadata column name present in your scoot_object$metadata to show your samples in groups, for example by "condition".
+#' @param facet_by This allows you to pass a metadata column name present in your scoot_object$metadata to show your samples in facets with ggplot facet_grid, for example by "condition".
+#' @param pval_method Specify method how to calculate the p-value. Wilcoxon test is recommended as compositional data might not fullfill the assumption of a gaussian distribution. For alternatives, see documentation of ggpubr::stat_pwc.
+#' @param p_adjust_method Method for adjusting p-values (see ggpubr::stat_pwc for available methods)
 #' @param palette Choose a palette of your liking. For available palettes, see ggsci package. Default: "lancet"
-#' @param legend.position Where to put the legend. Possible options: "top", "right", "bottom", "left"
+#' @param legend_position Where to put the legend. Possible options: "top", "right", "bottom", "left"
 
 #' @importFrom ggplot2 ggplot aes geom_boxplot theme element_text ggtitle facet_grid position_jitterdodge
 #' @importFrom ggpubr stat_pwc ggboxplot
 #' @importFrom stats reformulate
 #' @importFrom patchwork wrap_plots
 
-#' @return Plotting function to show the cell type composition from HiTME object across different samples.
-#' @export composition.boxplot
+#' @return Plotting function to show the cell type composition from scoot object across different samples.
+#' @export composition_boxplot
 #'
 
-composition.boxplot <- function (hit.object = NULL,
-                                 plot.var = "clr",
-                                 layer = "layer1",
-                                 return.plot.to.var = FALSE,
-                                 group.by = NULL,
-                                 facet.by = NULL,
-                                 pval.method = "wilcox.test",
-                                 p.adjust.method = "BH",
-                                 palette = "lancet",
-                                 legend.position = "right") {
+composition_boxplot <- function(scoot_object = NULL,
+                                plot.var = "clr",
+                                layer = "layer1",
+                                return_plot_to_var = FALSE,
+                                group_by = NULL,
+                                facet_by = NULL,
+                                pval_method = "wilcox.test",
+                                p_adjust_method = "BH",
+                                palette = "lancet",
+                                legend_position = "right") {
 
   # Need to replace special characters
-  colnames(hit.object@metadata) <- make.names(colnames(hit.object@metadata))
+  colnames(scoot_object@metadata) <- make.names(colnames(scoot_object@metadata))
 
-  sample.col <- "hitme.sample"
+  sample_col <- "scoot_sample"
 
-  if (is.null(hit.object)) {
-    stop("Please provide input hit.object")
+  if (is.null(scoot_object)) {
+    stop("Please provide input scoot_object")
   }
   if (!length(plot.var) == 1 ||
       !is.character(plot.var) ||
@@ -2027,65 +2026,65 @@ composition.boxplot <- function (hit.object = NULL,
   if (!length(layer) == 1 || !is.character(layer)) {
     stop("Please provide one character string for layer parameter")
   }
-  if (!is.null(group.by)) {
-    if (!length(group.by) == 1 || !is.character(group.by)) {
-      stop("Please provide one character string for the group.by parameter")
+  if (!is.null(group_by)) {
+    if (!length(group_by) == 1 || !is.character(group_by)) {
+      stop("Please provide one character string for the group_by parameter")
     }
-    group.by <- make.names(group.by)
-    group.by.gg <- sym(group.by)
-    nr_of_boxplots <- hit.object@metadata[[group.by]] %>%
+    group_by <- make.names(group_by)
+    group_by_gg <- sym(group_by)
+    nr_of_boxplots <- scoot_object@metadata[[group_by]] %>%
       unique() %>%
       length() %>%
       "*"(1.5) %>%
       round()
-    hit.object@metadata[group.by] <- lapply(hit.object@metadata[group.by], as.factor)
+    scoot_object@metadata[group_by] <- lapply(scoot_object@metadata[group_by], as.factor)
   }
-  if (!is.null(facet.by)) {
-    if (!is.character(facet.by)) {
-      stop("Please provide a character string or a vector of character strings for the facet.by parameter")
+  if (!is.null(facet_by)) {
+    if (!is.character(facet_by)) {
+      stop("Please provide a character string or a vector of character strings for the facet_by parameter")
     }
-    facet.by <- make.names(facet.by)
+    facet_by <- make.names(facet_by)
 
-    facet.by.in.colnames <- facet.by %in% names(hit.object@metadata)
-    if (!all(facet.by.in.colnames)) {
-      facet.by.not.in.colnames <- facet.by[!facet.by.in.colnames]
-      stop(paste("facet.by ", facet.by.not.in.colnames, " not found in hit.object@metadata column names"))
+    facet_by_in_colnames <- facet_by %in% names(scoot_object@metadata)
+    if (!all(facet_by_in_colnames)) {
+      facet_by_not_in_colnames <- facet_by[!facet_by_in_colnames]
+      stop(paste("facet_by ", facet_by_not_in_colnames, " not found in scoot_object@metadata column names"))
     }
   }
 
-  comps <- hit.object@composition[[layer]]
-  meta <- hit.object@metadata
+  comps <- scoot_object@composition[[layer]]
+  meta <- scoot_object@metadata
 
   plot.var.gg <- sym(plot.var)
 
   if (is.data.frame(comps)) {
-    comp <- merge(comps, meta[, c(sample.col, group.by, facet.by), drop=FALSE], by = sample.col)
+    comp <- merge(comps, meta[, c(sample_col, group_by, facet_by), drop=FALSE], by = sample_col)
 
-    # Need to check if group.by is NULL
-    # Due to a presumed bug, if group.by is passed as variable to ggboxplot, even if it is assigned NULL, it throws an error
-    if (is.null(group.by)) {
+    # Need to check if group_by is NULL
+    # Due to a presumed bug, if group_by is passed as variable to ggboxplot, even if it is assigned NULL, it throws an error
+    if (is.null(group_by)) {
       p <- ggboxplot(comp,
                      x = "celltype",
                      y = plot.var,
                      outlier.shape = NA,
                      palette = palette,
-                     facet.by = facet.by,
-                     legend = legend.position) +
+                     facet.by = facet_by,
+                     legend = legend_position) +
         geom_jitter(width = 0.2, size = 1)
     } else {
       p <- ggboxplot(comp,
                      x = "celltype",
                      y = plot.var,
-                     color = group.by,
+                     color = group_by,
                      outlier.shape = NA,
                      palette = palette,
-                     facet.by = facet.by,
-                     legend = legend.position) +
-        geom_jitter(mapping = aes(color = !!group.by.gg), position=position_jitterdodge(jitter.width = 1/nr_of_boxplots), size = 1) +
-        stat_pwc(aes(group = !!group.by.gg),
+                     facet.by = facet_by,
+                     legend = legend_position) +
+        geom_jitter(mapping = aes(color = !!group_by_gg), position=position_jitterdodge(jitter.width = 1/nr_of_boxplots), size = 1) +
+        stat_pwc(aes(group = !!group_by_gg),
                  label = "p.signif",
-                 method = pval.method,
-                 p.adjust.method = p.adjust.method,
+                 method = pval_method,
+                 p.adjust.method = p_adjust_method,
                  p.adjust.by = "panel",
                  tip.length = 0,
                  hide.ns = TRUE)
@@ -2095,7 +2094,7 @@ composition.boxplot <- function (hit.object = NULL,
       theme(axis.text.x = element_text(angle = 45, hjust=1)) +
       scale_y_continuous(expand = expansion(mult = c(0.05, 0.1)))
 
-    if (return.plot.to.var) {
+    if (return_plot_to_var) {
       return(p)
     } else {
       print(p)
@@ -2105,34 +2104,34 @@ composition.boxplot <- function (hit.object = NULL,
   else {
     p_list <- list()
     for (ct in names(comps)) {
-      comp <- hit.object@composition[[layer]][[ct]]
-      comp <- merge(comp, meta[, c(sample.col, group.by, facet.by), drop=FALSE], by = sample.col)
+      comp <- scoot_object@composition[[layer]][[ct]]
+      comp <- merge(comp, meta[, c(sample_col, group_by, facet_by), drop=FALSE], by = sample_col)
 
-      # Need to check if group.by is NULL
-      # Due to a presumed bug, if group.by is passed as variable to ggboxplot, even if it is assigned NULL, it throws an error
-      if (is.null(group.by)) {
+      # Need to check if group_by is NULL
+      # Due to a presumed bug, if group_by is passed as variable to ggboxplot, even if it is assigned NULL, it throws an error
+      if (is.null(group_by)) {
         p_list[["plot_list"]][[ct]] <- ggboxplot(comp,
                                                  x = "celltype",
                                                  y = plot.var,
                                                  outlier.shape = NA,
                                                  palette = palette,
-                                                 facet.by = facet.by,
-                                                 legend = legend.position) +
+                                                 facet.by = facet_by,
+                                                 legend = legend_position) +
           geom_jitter(width = 0.2, size = 1)
       } else {
         p_list[["plot_list"]][[ct]] <- ggboxplot(comp,
                                                  x = "celltype",
                                                  y = plot.var,
-                                                 color = group.by,
+                                                 color = group_by,
                                                  outlier.shape = NA,
                                                  palette = palette,
-                                                 facet.by = facet.by,
-                                                 legend = legend.position) +
-          geom_jitter(mapping = aes(color = !!group.by.gg), position=position_jitterdodge(jitter.width = 1/nr_of_boxplots), size = 1) +
-          stat_pwc(aes(group = !!group.by.gg),
+                                                 facet.by = facet_by,
+                                                 legend = legend_position) +
+          geom_jitter(mapping = aes(color = !!group_by_gg), position=position_jitterdodge(jitter.width = 1/nr_of_boxplots), size = 1) +
+          stat_pwc(aes(group = !!group_by_gg),
                    label = "p.signif",
-                   method = pval.method,
-                   p.adjust.method = p.adjust.method,
+                   method = pval_method,
+                   p.adjust.method = p_adjust_method,
                    p.adjust.by = "panel",
                    tip.length = 0,
                    hide.ns = TRUE)
@@ -2145,7 +2144,7 @@ composition.boxplot <- function (hit.object = NULL,
     }
     p_list[["arranged_plots"]] <- patchwork::wrap_plots(p_list[["plot_list"]])
 
-    if (return.plot.to.var) {
+    if (return_plot_to_var) {
       return(p_list)
     } else {
       print(p_list[["arranged_plots"]])
