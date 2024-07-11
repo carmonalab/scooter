@@ -506,7 +506,7 @@ get_aggregated_profile <- function(object,
       } else {
         # Handle case if there is only one cell type
         col_name <- as.character(unique(object@meta.data[[group_by_aggregated[[i]]]]))
-        colnames(avg_exp[[i]]) <- col_name
+        colnames(avg_exp[[i]])[colnames(avg_exp[[i]]) == "all.annotated_only"] <- col_name
       }
     })
 
