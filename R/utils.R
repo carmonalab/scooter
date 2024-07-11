@@ -255,7 +255,7 @@ get_scores <- function(matrix,
                                                                      label = "var",
                                                                      invisible = invisible)
     } else {
-      clustering <- pam(mat, n_clust_opt, nstart = 30)
+      clustering <- cluster::pam(mat, n_clust_opt, nstart = 30)
       results[["plots"]][["pca_sample_space_clustered"]] <- fviz_cluster(clustering) +
         coord_equal() +
         theme_minimal() +

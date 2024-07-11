@@ -941,12 +941,13 @@ merge_scoot_objects <- function(scoot_object = NULL,
 #' @importFrom ggdendro ggdendrogram
 #' @importFrom stringr str_to_title
 #' @importFrom stats prcomp na.omit formula pnorm t.test
-#' @importFrom factoextra fviz_pca
+#' @importFrom factoextra fviz_pca fviz_nbclust fviz_cluster
 #' @importFrom scran buildKNNGraph
 #' @importFrom igraph modularity set_vertex_attr layout_nicely V
 #' @importFrom patchwork wrap_plots plot_layout plot_annotation
 #' @importFrom ggraph ggraph geom_edge_link geom_node_point
 #' @importFrom metap sumlog sumz
+#' @importFrom cluster pam
 
 #' @return Metrics of cell types pseudobulk clustering
 #' @export get_cluster_score
