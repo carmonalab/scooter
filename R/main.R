@@ -1,6 +1,4 @@
-# Function scoot_object
 #' Get a scoot object summarizing cell type classification and aggregated profiles.
-#'
 #'
 #' @param object A Seurat object or a list of Seurat objects
 #' @param group_by List or vector with one or multiple Seurat object metadata columns with cell type predictions to group by (e.g. layer 1 cell type classification)
@@ -21,27 +19,27 @@
 #' @import SeuratObject
 #'
 #' @return scoot object summarizing cell type classification and aggregated profiles.
-#' @export scoot_object
+#' @export scoot
 #'
 
 
-scoot_object <- function(object,
-                         group_by = list("layer_1" = "scGate_multi",
-                                         "layer_2" = "functional.cluster"
-                         ),
-                         split_by = NULL,
-                         min_cells_composition = 10,
-                         min_cells_aggregated = 10,
-                         name_additional_signatures = NULL,
-                         useNA = FALSE,
-                         clr_zero_impute_perc = 1,
-                         layer_links = c("scGate_multi" = "functional.cluster"),
-                         assay = "RNA",
-                         layer_1_link = "CellOntology_ID",
+scoot <- function(object,
+                  group_by = list("layer_1" = "scGate_multi",
+                                  "layer_2" = "functional.cluster"
+                  ),
+                  split_by = NULL,
+                  min_cells_composition = 10,
+                  min_cells_aggregated = 10,
+                  name_additional_signatures = NULL,
+                  useNA = FALSE,
+                  clr_zero_impute_perc = 1,
+                  layer_links = c("scGate_multi" = "functional.cluster"),
+                  assay = "RNA",
+                  layer_1_link = "CellOntology_ID",
 
-                         ncores = parallelly::availableCores() - 2,
-                         bparam = NULL,
-                         progressbar = TRUE) {
+                  ncores = parallelly::availableCores() - 2,
+                  bparam = NULL,
+                  progressbar = TRUE) {
 
   args <- list(group_by,
                split_by,
@@ -56,16 +54,16 @@ scoot_object <- function(object,
 
   # if object is a single Seurat object, turn into a list
   if (!is.list(object)) {
-    scoot_list <- scoot_object_helper(object, group_by,
-                                      split_by,
-                                      min_cells_composition,
-                                      min_cells_aggregated,
-                                      name_additional_signatures,
-                                      useNA,
-                                      clr_zero_impute_perc,
-                                      layer_links,
-                                      assay,
-                                      layer_1_link)
+    scoot_list <- scoot_helper(object, group_by,
+                               split_by,
+                               min_cells_composition,
+                               min_cells_aggregated,
+                               name_additional_signatures,
+                               useNA,
+                               clr_zero_impute_perc,
+                               layer_links,
+                               assay,
+                               layer_1_link)
   } else {
     # set parallelization parameters
     param <- set_parallel_params(ncores = ncores,
@@ -75,7 +73,7 @@ scoot_object <- function(object,
     scoot_list <- BiocParallel::bplapply(X = object,
                                          BPPARAM = param,
                                          function(x) {
-                                           do.call(scoot_object_helper,
+                                           do.call(scoot_helper,
                                                    c(x, args)
                                            )
                                          })
@@ -84,19 +82,19 @@ scoot_object <- function(object,
   return(scoot_list)
 }
 
-scoot_object_helper <- function(object,
-                                group_by = list("layer_1" = c("scGate_multi"),
-                                                "layer_2" = c("functional.cluster")
-                                ),
-                                split_by = NULL,
-                                min_cells_composition = 10,
-                                min_cells_aggregated = 10,
-                                name_additional_signatures = NULL,
-                                useNA = FALSE,
-                                clr_zero_impute_perc = 1,
-                                layer_links = c("scGate_multi" = "functional.cluster"),
-                                assay = "RNA",
-                                layer_1_link = "CellOntology_ID") {
+scoot_helper <- function(object,
+                         group_by = list("layer_1" = c("scGate_multi"),
+                                         "layer_2" = c("functional.cluster")
+                         ),
+                         split_by = NULL,
+                         min_cells_composition = 10,
+                         min_cells_aggregated = 10,
+                         name_additional_signatures = NULL,
+                         useNA = FALSE,
+                         clr_zero_impute_perc = 1,
+                         layer_links = c("scGate_multi" = "functional.cluster"),
+                         assay = "RNA",
+                         layer_1_link = "CellOntology_ID") {
 
   if (is.null(object)) {
     stop("Please provide a Seurat object")
@@ -655,9 +653,9 @@ get_aggregated_signature <- function(object,
 
 
 
-#' Merge scootObjects
+#' Merge scoot objects
 #'
-#' @param scoot_object List of scootObjects
+#' @param scoot_object List of scoot objects
 #' @param group_by If only merging for certain layers of annotation is intended, layers names can be indicated here as vector. Otherwise all layers present in all scoot object will be merged.
 #' @param metadata_vars Variables to keep as metadata. (Default: NULL, keeping unique metadata columns per sample, dropping single-cell metadata)
 #' @param pseudobulk_matrix Paramater to determine whther obtain the pseudobulk matrix as a single matrix (\code{"unique"}), or as one matrix for each cell type in the layer (\code{"list"})
