@@ -455,17 +455,31 @@ get_aggregated_profile <- function(object,
         row.names(avg_exp[[i]]) <- row_names
         colnames(avg_exp[[i]]) <- "all"
 
-        # Calculate pseudobulk for only annotated cells in sample
 
+        # Calculate pseudobulk for annotated cells in sample
         # Subset to remove not annotated cells
-        object <- object[, which(!is.na(object[[group_by_aggregated[[i]]]]))]
+        obj <- object[, which(!is.na(object[[group_by_aggregated[[i]]]]))]
 
         # Calculate pseudobulk of all annotated cells
-        mat <- object@assays[["RNA"]]["counts"]
+        mat <- obj@assays[["RNA"]]["counts"]
         row_names <- row.names(mat)
         mat <- Matrix::Matrix(rowSums(mat))
         row.names(mat) <- row_names
         colnames(mat) <- "all.annotated_only"
+
+        avg_exp[[i]] <- cbind(avg_exp[[i]], mat)
+
+
+        # Calculate pseudobulk for not annotated cells in sample
+        # Subset to remove annotated cells
+        obj <- object[, which(is.na(object[[group_by_aggregated[[i]]]]))]
+
+        # Calculate pseudobulk of all annotated cells
+        mat <- obj@assays[["RNA"]]["counts"]
+        row_names <- row.names(mat)
+        mat <- Matrix::Matrix(rowSums(mat))
+        row.names(mat) <- row_names
+        colnames(mat) <- "all.not_annotated_only"
 
         avg_exp[[i]] <- cbind(avg_exp[[i]], mat)
       }
