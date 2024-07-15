@@ -63,7 +63,8 @@ Imports:
   purrr (>= 1.0.2),
   ggplotify (>= 0.1.2),
   patchwork (>= 1.2.0),
-  cluster (>= 2.1.6)
+  cluster (>= 2.1.6),
+  cccd (>= 1.6)
 Suggests: 
     knitr,
     rmarkdown,
