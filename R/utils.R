@@ -126,10 +126,10 @@ compositional_data <- function(data,
 ### Pre-process pseudobulk count data
 
 preproc_pseudobulk <- function(matrix,
-                                metadata,
-                                cluster_by,
-                                nvar_genes = 500,
-                                black_list = NULL) {
+                               metadata,
+                               cluster_by,
+                               nvar_genes = 500,
+                               black_list = NULL) {
 
   suppressMessages({
     suppressWarnings({
@@ -217,28 +217,25 @@ get_scores <- function(matrix,
     mat <- as.matrix(results[["distance_matrix"]])
 
     # Plot PCA ###############################################
-    results[["plots"]][["pca_feature_space"]] <- plot_pca(matrix,
-                                                          color_cluster_by = cluster_labels,
-                                                          label = "var",
-                                                          invisible = invisible) +
-      ggplot2::ggtitle("PCA on feature matrix")
-
-    results[["plots"]][["pca_sample_space"]] <- plot_pca(mat,
-                                                         scale. = TRUE,
-                                                         color_cluster_by = cluster_labels,
-                                                         invisible = c("var", "quali")) +
-      ggplot2::ggtitle("PCA on sample distance matrix")
+    results[["plots"]][["pca"]] <- plot_pca(matrix,
+                                            color_cluster_by = cluster_labels,
+                                            label = "var",
+                                            invisible = invisible) +
+      ggplot2::ggtitle("PCA")
 
 
     # Clustering ###############################################
-    ## Find number of clusters with silhouette method ###############################################
+
+    ## PAM clustering ###############################################
+
+    # Find number of clusters with PAM and silhouette method
     if (length(cluster_labels) <= 10) {
       k_max <- length(cluster_labels) - 1
     } else {
       k_max <- 10
     }
 
-    results[["plots"]][["number_of_clusters"]] <-
+    p <-
       factoextra::fviz_nbclust(x = mat,
                                FUNcluster = cluster::pam,
                                method = "silhouette",
@@ -246,22 +243,45 @@ get_scores <- function(matrix,
                                print.summary = TRUE) +
       theme_minimal() +
       ggtitle("Clusters suggested by\nK-Medoids (Partitioning Around Medoids) and silhouette method")
-    n_clust <- results[["plots"]][["number_of_clusters"]]$data
-    n_clust_opt <- as.numeric(n_clust$clusters[which.max(n_clust$y)])
+    # results[["plots"]][["number_of_clusters"]] <- p
+    nclust <- as.numeric(p$data$clusters[which.max(p$data$y)])
 
-    ## Plot PCA with clustering ###############################################
-    if (n_clust_opt < 2) {
-      results[["plots"]][["pca_sample_space_clustered"]] <- plot_pca(matrix,
-                                                                     label = "var",
-                                                                     invisible = invisible)
+    clusters <- cluster::pam(matrix, nclust, cluster.only=TRUE, nstart = 30)
+
+    # Plot PCA
+    if (nclust == 1) {
+      results[["plots"]][["pca_pam_clustered"]] <- plot_pca(matrix,
+                                                            label = "var",
+                                                            invisible = invisible)
     } else {
-      clustering <- cluster::pam(mat, n_clust_opt, nstart = 30)
-      results[["plots"]][["pca_sample_space_clustered"]] <- fviz_cluster(clustering) +
-        coord_equal() +
-        theme_minimal() +
-        ggplot2::ggtitle("PCA on sample distance matrix")
+      results[["plots"]][["pca_pam_clustered"]] <- plot_pca(matrix,
+                                                            label = "var",
+                                                            invisible = invisible,
+                                                            color_cluster_by = clusters,
+                                                            add_ellipses = TRUE) +
+        ggplot2::ggtitle("PCA - PAM clustered")
     }
 
+
+    ## Leiden clustering ###############################################
+
+    adj_graph <- igraph::as.undirected(cccd::nng(matrix, k = 3))
+    r <- quantile(strength(adj_graph))[2] / (gorder(adj_graph) - 1) / 4
+    leiden_clusters <- igraph::cluster_leiden(adj_graph, resolution_parameter = r)$membership
+
+    # Plot PCA
+    if (length(unique(leiden_clusters)) == 1) {
+      results[["plots"]][["pca_leiden_clustered"]] <- plot_pca(matrix,
+                                                               label = "var",
+                                                               invisible = invisible)
+    } else {
+      results[["plots"]][["pca_leiden_clustered"]] <- plot_pca(matrix,
+                                                               label = "var",
+                                                               invisible = invisible,
+                                                               color_cluster_by = leiden_clusters,
+                                                               add_ellipses = TRUE) +
+        ggplot2::ggtitle("PCA - Leiden clustered")
+    }
 
     # Calculate scores + plots ###############################################
 
@@ -527,11 +547,11 @@ calc_modularity <- function(labels,
 # For permutation testing labels are randomly shuffled to calculate the random distribution of labels as the null hypothesis
 
 perm_test <- function(fun,
-                       data,
-                       labels,
-                       obs,
-                       ntests,
-                       seed) {
+                      data,
+                      labels,
+                      obs,
+                      ntests,
+                      seed) {
 
   if (!(length(ntests) == 1 &&
         is.numeric(ntests) &&
@@ -594,14 +614,15 @@ p_val_zscore <- function(obs,
 ### get_scores plot helpers
 
 plot_pca <- function(matrix,
-                     scale. = FALSE,
+                     scale = FALSE,
                      label = "all",
                      invisible = c("var", "quali"),
                      geom_var = c("arrow", "text"),
                      col_var = "steelblue",
                      alpha_var = 0.3,
                      repel = TRUE,
-                     color_cluster_by = "none") {
+                     color_cluster_by = "none",
+                     add_ellipses = FALSE) {
 
   # Remove constant columns with variance = 0
   constant_columns <- apply(matrix, 2, function(col) var(col) == 0)
@@ -614,11 +635,14 @@ plot_pca <- function(matrix,
 
   # If there are still columns left
   if (ncol(matrix) > 0) {
-    res.pca <- stats::prcomp(matrix, scale. = scale.)
+    res.pca <- stats::prcomp(matrix,
+                             center = TRUE,
+                             scale. = scale)
     suppressWarnings(
       suppressMessages(
         p <- factoextra::fviz_pca(res.pca,
                                   habillage = color_cluster_by,
+                                  addEllipses = add_ellipses,
                                   label = label,
                                   pointsize = 3,
                                   invisible = invisible,
