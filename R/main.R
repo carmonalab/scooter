@@ -133,6 +133,14 @@ scoot_helper <- function(object,
     }
   }
 
+  # Get unique metadata columns
+  # Get metadata column names which have all the same value.
+  # Each object is from a specific sample, so each object has e.g. a metadata column "Sample" which contains all the same value (e.g. "sample1" for sample 1, "sample2" for sample 2, etc.)
+  # Other metadata columns, e.g. scGate_multi can be dropped, as the merged scoot object is a summary per sample, so single-cell metadata columns don't make sense.
+  umc <- apply(object@meta.data, 2, function(y) length(unique(y))) == 1
+  umc_names <- names(umc)[umc == TRUE]
+  metadata <- object@meta.data[1, umc_names]
+
 
   # Compute proportions
   # message("\nComputing cell type composition...\n")
@@ -161,7 +169,7 @@ scoot_helper <- function(object,
                                        useNA = useNA)
 
   scoot <- methods::new("scoot",
-                        metadata = object@meta.data,
+                        metadata = metadata,
                         aggregated_profile = list("pseudobulk" = avg_expr,
                                                   "signatures" = aggr_sig),
                         composition = comp_prop
@@ -767,16 +775,9 @@ merge_scoot_objects <- function(scoot_object = NULL,
       all_names[[x]] <- names(scoot_object[[x]]@metadata)
     }
     all_names_in_all <- Reduce(intersect, all_names)
-
-    umc <- list()
-    for (x in names(scoot_object)) {
-      umc[[x]] <- apply(scoot_object[[x]]@metadata[all_names_in_all], 2, function(y) length(unique(y))) == 1
-    }
-    umc <- umc %>% Reduce("&", .)
-    metadata_vars <- names(umc)[umc == TRUE]
   }
   metadata <- lapply(names(scoot_object),
-                     function(x) {scoot_object[[x]]@metadata[1, metadata_vars] %>%
+                     function(x) {scoot_object[[x]]@metadata[1, all_names_in_all] %>%
                          mutate(scoot_sample = x)
                      }
   )

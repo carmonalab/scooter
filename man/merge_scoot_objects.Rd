@@ -2,7 +2,7 @@
 % Please edit documentation in R/main.R
 \name{merge_scoot_objects}
 \alias{merge_scoot_objects}
-\title{Merge scootObjects}
+\title{Merge scoot objects}
 \usage{
 merge_scoot_objects(
   scoot_object = NULL,
@@ -16,7 +16,7 @@ merge_scoot_objects(
 )
 }
 \arguments{
-\item{scoot_object}{List of scootObjects}
+\item{scoot_object}{List of scoot objects}
 
 \item{group_by}{If only merging for certain layers of annotation is intended, layers names can be indicated here as vector. Otherwise all layers present in all scoot object will be merged.}
 
@@ -36,5 +36,5 @@ merge_scoot_objects(
 Merged scootObject
 }
 \description{
-Merge scootObjects
+Merge scoot objects
 }
