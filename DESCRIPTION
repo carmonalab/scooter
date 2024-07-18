@@ -64,7 +64,9 @@ Imports:
   ggplotify (>= 0.1.2),
   patchwork (>= 1.2.0),
   cluster (>= 2.1.6),
-  cccd (>= 1.6)
+  cccd (>= 1.6),
+  NbClust (>= 3.0.1),
+  dbscan (>= 1.2-0)
 Suggests: 
     knitr,
     rmarkdown,
