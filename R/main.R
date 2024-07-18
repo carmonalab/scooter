@@ -922,7 +922,9 @@ merge_scoot_objects <- function(scoot_object = NULL,
 #' @param cluster_by_drop_na Whether to keep (FALSE) or drop (TRUE) NAs present in cluster_by column.
 #' @param batching Vector indicating the variable for batching to allow calculating scores per batch, to account for batch effect
 #' @param scores scores to compute clustering of samples based on cell type prediction.
-#' @param modularity_k Number of k-nearest neighbours to use to build graph for the calculation of the modularity score
+#' @param modularity_k Number of k-nearest neighbors to use to build graph for the calculation of the modularity score
+#' @param pam_nclusters Number of clusters for PAM clustering. Default: 2 clusters. "auto" uses factoextra::fviz_nbclust(FUNcluster = cluster::pam, method = "silhouette") to suggest a number of clusters.
+#' @param hdbscan_min_pts integer; Minimum size of clusters. See dbscan::hdbscan for details.
 #' @param dist_method Method to compute distance between celltypes, default is euclidean.
 #' @param hclust_method Hierarchical clustering method for hclust. Options are: "single", "complete", "average" (= UPGMA), "mcquitty" (= WPGMA), "median" (= WPGMC) or "centroid" (= UPGMC). (See hclust package for details)
 #' @param ntests Number of shuffling events to calculate p-value for scores
@@ -956,11 +958,12 @@ merge_scoot_objects <- function(scoot_object = NULL,
 #' @importFrom stats prcomp na.omit formula pnorm t.test
 #' @importFrom factoextra fviz_pca fviz_nbclust fviz_cluster
 #' @importFrom scran buildKNNGraph
-#' @importFrom igraph modularity set_vertex_attr layout_nicely V
+#' @importFrom igraph modularity set_vertex_attr layout_nicely V strength gorder
 #' @importFrom patchwork wrap_plots plot_layout plot_annotation
 #' @importFrom ggraph ggraph geom_edge_link geom_node_point
 #' @importFrom metap sumlog sumz
 #' @importFrom cluster pam
+#' @importFrom NbClust NbClust
 
 #' @return Metrics of cell types pseudobulk clustering
 #' @export get_cluster_score
@@ -973,6 +976,9 @@ get_cluster_score <- function(scoot_object = NULL,
                               batching = NULL,
                               scores = c("silhouette_isolated", "silhouette", "modularity"),
                               modularity_k = 3,
+                              max_nc = 5,
+                              pam_nclusters = "auto",
+                              hdbscan_min_pts = 3,
                               dist_method = "euclidean",
                               hclust_method = "complete",
 
@@ -991,7 +997,7 @@ get_cluster_score <- function(scoot_object = NULL,
                               nvar_genes = 500,
                               black_list = NULL,
 
-                              ncores = round(parallelly::availableCores() / 3), # to reduce memory load
+                              ncores = round(parallelly::availableCores() - 2),
                               bparam = NULL,
                               progressbar = TRUE) {
 
@@ -1008,6 +1014,11 @@ get_cluster_score <- function(scoot_object = NULL,
   } else if (!all(cluster_by %in% names(scoot_object@metadata))) {
     cluster_by <- cluster_by[cluster_by %in% names(scoot_object@metadata)]
     message("Only found ", paste(cluster_by, collapse = ", ") , " as grouping variable for scoot Object.")
+  }
+
+  if (!is.numeric(pam_nclusters) &&
+      !pam_nclusters == "auto") {
+    stop("pam_nclusters must be numeric or 'auto'.")
   }
 
   # Need to replace special characters
@@ -1076,6 +1087,9 @@ get_cluster_score <- function(scoot_object = NULL,
                        cluster_labels = cluster_labels,
                        scores = scores,
                        modularity_k = modularity_k,
+                       max_nc = max_nc,
+                       pam_nclusters = pam_nclusters,
+                       hdbscan_min_pts = hdbscan_min_pts,
                        dist_method = dist_method,
                        ntests = ntests,
                        seed = seed,
@@ -1105,6 +1119,9 @@ get_cluster_score <- function(scoot_object = NULL,
                              cluster_labels = cluster_labels,
                              scores = scores,
                              modularity_k = modularity_k,
+                             max_nc = max_nc,
+                             pam_nclusters = pam_nclusters,
+                             hdbscan_min_pts = hdbscan_min_pts,
                              dist_method = dist_method,
                              ntests = ntests,
                              seed = seed,
@@ -1178,6 +1195,9 @@ get_cluster_score <- function(scoot_object = NULL,
                                     cluster_labels = cluster_labels,
                                     scores = scores,
                                     modularity_k = modularity_k,
+                                    max_nc = max_nc,
+                                    pam_nclusters = pam_nclusters,
+                                    hdbscan_min_pts = hdbscan_min_pts,
                                     dist_method = dist_method,
                                     ntests = ntests,
                                     seed = seed,
@@ -1213,6 +1233,9 @@ get_cluster_score <- function(scoot_object = NULL,
                                      cluster_labels = cluster_labels,
                                      scores = scores,
                                      modularity_k = modularity_k,
+                                     max_nc = max_nc,
+                                     pam_nclusters = pam_nclusters,
+                                     hdbscan_min_pts = hdbscan_min_pts,
                                      dist_method = dist_method,
                                      ntests = ntests,
                                      seed = seed,
@@ -1305,6 +1328,9 @@ get_cluster_score <- function(scoot_object = NULL,
                                 cluster_labels = cluster_labels,
                                 scores = scores,
                                 modularity_k = modularity_k,
+                                max_nc = max_nc,
+                                pam_nclusters = pam_nclusters,
+                                hdbscan_min_pts = hdbscan_min_pts,
                                 dist_method = dist_method,
                                 ntests = ntests,
                                 seed = seed,
@@ -1346,6 +1372,9 @@ get_cluster_score <- function(scoot_object = NULL,
                                    cluster_labels = cluster_labels,
                                    scores = scores,
                                    modularity_k = modularity_k,
+                                   max_nc = max_nc,
+                                   pam_nclusters = pam_nclusters,
+                                   hdbscan_min_pts = hdbscan_min_pts,
                                    dist_method = dist_method,
                                    ntests = ntests,
                                    seed = seed,
@@ -1446,6 +1475,9 @@ get_cluster_score <- function(scoot_object = NULL,
                                 cluster_labels = cluster_labels,
                                 scores = scores,
                                 modularity_k = modularity_k,
+                                max_nc = max_nc,
+                                pam_nclusters = pam_nclusters,
+                                hdbscan_min_pts = hdbscan_min_pts,
                                 dist_method = dist_method,
                                 ntests = ntests,
                                 seed = seed,
@@ -1481,6 +1513,9 @@ get_cluster_score <- function(scoot_object = NULL,
                                  cluster_labels = cluster_labels,
                                  scores = scores,
                                  modularity_k = modularity_k,
+                                 max_nc = max_nc,
+                                 pam_nclusters = pam_nclusters,
+                                 hdbscan_min_pts = hdbscan_min_pts,
                                  dist_method = dist_method,
                                  ntests = ntests,
                                  seed = seed,

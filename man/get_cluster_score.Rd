@@ -11,6 +11,9 @@ get_cluster_score(
   batching = NULL,
   scores = c("silhouette_isolated", "silhouette", "modularity"),
   modularity_k = 3,
+  max_nc = 5,
+  pam_nclusters = "auto",
+  hdbscan_min_pts = 3,
   dist_method = "euclidean",
   hclust_method = "complete",
   ntests = 100,
@@ -22,7 +25,7 @@ get_cluster_score(
   ndim = 10,
   nvar_genes = 500,
   black_list = NULL,
-  ncores = round(parallelly::availableCores()/3),
+  ncores = round(parallelly::availableCores() - 2),
   bparam = NULL,
   progressbar = TRUE
 )
@@ -38,7 +41,11 @@ get_cluster_score(
 
 \item{scores}{scores to compute clustering of samples based on cell type prediction.}
 
-\item{modularity_k}{Number of k-nearest neighbours to use to build graph for the calculation of the modularity score}
+\item{modularity_k}{Number of k-nearest neighbors to use to build graph for the calculation of the modularity score}
+
+\item{pam_nclusters}{Number of clusters for PAM clustering. Default: 2 clusters. "auto" uses factoextra::fviz_nbclust(FUNcluster = cluster::pam, method = "silhouette") to suggest a number of clusters.}
+
+\item{hdbscan_min_pts}{integer; Minimum size of clusters. See dbscan::hdbscan for details.}
 
 \item{dist_method}{Method to compute distance between celltypes, default is euclidean.}
 

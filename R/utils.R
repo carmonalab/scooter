@@ -121,7 +121,7 @@ compositional_data <- function(data,
 }
 
 
-# get.cluster.score helper functions ##############################################################################
+# get_cluster_score helper functions ##############################################################################
 
 ### Pre-process pseudobulk count data
 
@@ -194,6 +194,9 @@ get_scores <- function(matrix,
                        cluster_labels,
                        scores,
                        modularity_k,
+                       max_nc,
+                       pam_nclusters,
+                       hdbscan_min_pts,
                        dist_method = "euclidean",
                        ntests = 100, # number of shuffling events
                        seed = 22, # seed for random shuffling
@@ -213,8 +216,9 @@ get_scores <- function(matrix,
       nrow(matrix) > length(unique(cluster_labels))) {
 
     results[["feature_matrix"]] <- matrix
-    results[["distance_matrix"]] <- stats::dist(matrix, method = dist_method)
-    mat <- as.matrix(results[["distance_matrix"]])
+    results[["distance_matrix"]] <- as.matrix(stats::dist(matrix, method = dist_method))
+    # Do not store dist object, as this can lead to the following error when trying to view it in RStudio (depending on which packages are loaded):
+    # Error in .Primitive("[")(x, 1:6, , drop = FALSE) : incorrect number of dimensions
 
     # Plot PCA ###############################################
     results[["plots"]][["pca"]] <- plot_pca(matrix,
@@ -223,65 +227,170 @@ get_scores <- function(matrix,
                                             invisible = invisible) +
       ggplot2::ggtitle("PCA")
 
+    ## Plot PCA scree plot ###############################################
+    #
+    # # Perform PCA
+    # pca_result <- stats::prcomp(matrix,
+    #                             center = TRUE,
+    #                             scale. = FALSE)
+    #
+    # # Variance explained by each principal component
+    # variance_explained <- pca_result$sdev^2 / sum(pca_result$sdev^2)
+    # pc_numbers <- 1:length(variance_explained)
+    # scree_data <- data.frame(PC = pc_numbers, VarianceExplained = variance_explained)
+    #
+    # # Plot scree plot
+    # results[["plots"]][["pca_scree"]] <- ggplot(scree_data,
+    #                                             aes(x = PC,
+    #                                                 y = VarianceExplained)) +
+    #   geom_point(color = "blue", size = 3) +
+    #   geom_line(color = "blue", size = 1) +
+    #   labs(x = "Principal Component",
+    #        y = "Proportion of Variance Explained",
+    #        title = "Scree Plot") +
+    #   theme_minimal()
+
 
     # Clustering ###############################################
 
-    ## PAM clustering ###############################################
-
-    # Find number of clusters with PAM and silhouette method
-    if (length(cluster_labels) <= 10) {
-      k_max <- length(cluster_labels) - 1
+    # Set maximum number of clusters (cannot be more than samples - 1)
+    if (length(cluster_labels) <= max_nc) {
+      max_nc_adj <- length(cluster_labels) - 1
     } else {
-      k_max <- 10
+      max_nc_adj <- max_nc
     }
 
-    p <-
-      factoextra::fviz_nbclust(x = mat,
-                               FUNcluster = cluster::pam,
-                               method = "silhouette",
-                               k.max = k_max,
-                               print.summary = TRUE) +
-      theme_minimal() +
-      ggtitle("Clusters suggested by\nK-Medoids (Partitioning Around Medoids) and silhouette method")
-    # results[["plots"]][["number_of_clusters"]] <- p
-    nclust <- as.numeric(p$data$clusters[which.max(p$data$y)])
 
-    clusters <- cluster::pam(matrix, nclust, cluster.only=TRUE, nstart = 30)
+    ## Hierarchical clustering ###############################################
+
+    # Methods commonly throwing errors or not creating specific Best.nc are commented out
+    indeces <- c("kl", "ch", "hartigan",
+                 # "ccc", "scott", "marriot", "trcovw", "tracew", "friedman", "rubin",
+                 "cindex", "db", "silhouette", "duda", "pseudot2",
+                 # "beale",
+                 "ratkowsky", "ball", "ptbiserial", "gap",
+                 # "frey",
+                 "mcclain", "gamma", "gplus", "tau", "dunn",
+                 # "hubert",
+                 "sdindex",
+                 # "dindex",
+                 "sdbw")
+
+    # Determine the optimal number of clusters
+    clust_results <- sapply(indeces, function(x) {
+      tryCatch({
+        NbClust::NbClust(data = matrix,
+                         min.nc = 1,
+                         max.nc = max_nc_adj,
+                         method = "ward.D2",
+                         index = x)
+      }, error=function(e) NULL)
+    })
+
+    clust_results[sapply(clust_results, is.null)] <- NULL
+
+    nclust_table <- clust_results %>%
+      sapply(function(x) x[["Best.nc"]][["Number_clusters"]]) %>%
+      unlist() %>%
+      table()
+
+    nclust <- nclust_table %>%
+      which.max() %>%
+      nclust_table[.] %>%
+      names() %>%
+      as.numeric()
+
+    # From the methods that agree on the number of clusters
+    clust_results_filtered <- clust_results[sapply(clust_results, function(x) x[["Best.nc"]][["Number_clusters"]] == nclust)]
+
+    # Get clustering for each method
+    cluster_labels_df <- clust_results_filtered %>%
+      sapply(function(x) x[["Best.partition"]])
+
 
     # Plot PCA
     if (nclust == 1) {
-      results[["plots"]][["pca_pam_clustered"]] <- plot_pca(matrix,
-                                                            label = "var",
-                                                            invisible = invisible)
+      results[["plots"]][["pca_hclust_clustered"]] <- plot_pca(matrix)
+    } else {
+      # For each method (column) get consensus cluster assignment
+      hclust_clusters <- apply(cluster_labels_df, 1, function(x) names(which.max(table(x)))) %>%
+        as.factor()
+
+      results[["plots"]][["pca_hclust_clustered"]] <- plot_pca(matrix,
+                                                               color_cluster_by = hclust_clusters,
+                                                               add_ellipses = TRUE) +
+        ggplot2::ggtitle("PCA - Hierarchical clustering (ward.D2)")
+    }
+
+
+    ## PAM clustering ###############################################
+
+    if (pam_nclusters == "auto") {
+      # Find number of clusters with PAM and silhouette method
+
+      p <-
+        factoextra::fviz_nbclust(x = results[["distance_matrix"]],
+                                 FUNcluster = cluster::pam,
+                                 method = "silhouette",
+                                 k.max = max_nc_adj,
+                                 print.summary = TRUE) +
+        theme_minimal() +
+        ggtitle("Clusters suggested by\nK-Medoids (Partitioning Around Medoids) and silhouette method")
+      # results[["plots"]][["number_of_clusters"]] <- p
+      nclust <- as.numeric(p$data$clusters[which.max(p$data$y)])
+    } else {
+      if (length(cluster_labels) < pam_nclusters) {
+        nclust <- length(cluster_labels)
+      } else {
+        nclust <- pam_nclusters
+      }
+    }
+
+    pam_clusters <- cluster::pam(matrix, nclust, cluster.only=TRUE, nstart = 30)
+
+    # Plot PCA
+    if (nclust == 1) {
+      results[["plots"]][["pca_pam_clustered"]] <- plot_pca(matrix)
     } else {
       results[["plots"]][["pca_pam_clustered"]] <- plot_pca(matrix,
-                                                            label = "var",
-                                                            invisible = invisible,
-                                                            color_cluster_by = clusters,
+                                                            color_cluster_by = pam_clusters,
                                                             add_ellipses = TRUE) +
-        ggplot2::ggtitle("PCA - PAM clustered")
+        ggplot2::ggtitle(paste0("PCA - PAM clustered\nNumber of clusters: ", nclust))
     }
 
 
     ## Leiden clustering ###############################################
 
     adj_graph <- igraph::as.undirected(cccd::nng(matrix, k = 3))
-    r <- quantile(strength(adj_graph))[2] / (gorder(adj_graph) - 1) / 4
+    r <- quantile(igraph::strength(adj_graph))[2] / (igraph::gorder(adj_graph) - 1) / 4
     leiden_clusters <- igraph::cluster_leiden(adj_graph, resolution_parameter = r)$membership
 
     # Plot PCA
     if (length(unique(leiden_clusters)) == 1) {
-      results[["plots"]][["pca_leiden_clustered"]] <- plot_pca(matrix,
-                                                               label = "var",
-                                                               invisible = invisible)
+      results[["plots"]][["pca_leiden_clustered"]] <- plot_pca(matrix)
     } else {
       results[["plots"]][["pca_leiden_clustered"]] <- plot_pca(matrix,
-                                                               label = "var",
-                                                               invisible = invisible,
                                                                color_cluster_by = leiden_clusters,
                                                                add_ellipses = TRUE) +
-        ggplot2::ggtitle("PCA - Leiden clustered")
+        ggplot2::ggtitle(paste0("PCA - Leiden clustered\nResolution: ", round(r, 4)))
     }
+
+
+    ## HDBSCAN clustering ###############################################
+
+    cl <- dbscan::hdbscan(matrix, minPts = hdbscan_min_pts)
+    hdbscan_clusters <- cl$cluster+1
+
+    # Plot PCA
+    if (length(unique(hdbscan_clusters)) == 1) {
+      results[["plots"]][["pca_hdbscan_clustered"]] <- plot_pca(matrix)
+    } else {
+      results[["plots"]][["pca_hdbscan_clustered"]] <- plot_pca(matrix,
+                                                               color_cluster_by = hdbscan_clusters,
+                                                               add_ellipses = TRUE) +
+        ggplot2::ggtitle(paste0("PCA - HDBSCAN clustered\nHDBSCAN minPts: ", hdbscan_min_pts))
+    }
+
 
     # Calculate scores + plots ###############################################
 
@@ -293,7 +402,7 @@ get_scores <- function(matrix,
           ## Silhouette_isolated (new) ###############################################
           if (s == "silhouette_isolated") {
             sils <- calc_sil_onelabel(labels = cluster_labels,
-                                      dist = results[["distance_matrix"]],
+                                      dist = as.dist(results[["distance_matrix"]]),
                                       return_mean_for_permtest = FALSE)
 
             avg_per_group <- sils %>%
@@ -305,7 +414,7 @@ get_scores <- function(matrix,
             ci_intervals <- stats::t.test(sils[["sil_width"]])$conf.int
 
             p_val <- perm_test(fun = calc_sil_onelabel,
-                               data = results[["distance_matrix"]],
+                               data = as.dist(results[["distance_matrix"]]),
                                labels = cluster_labels,
                                obs = avg_sil,
                                ntests = ntests,
@@ -328,7 +437,7 @@ get_scores <- function(matrix,
           ## Silhouette (original) ###############################################
           if (s == "silhouette") {
             sils <- calc_sil(labels = cluster_labels,
-                             dist = results[["distance_matrix"]],
+                             dist = as.dist(results[["distance_matrix"]]),
                              return_mean_for_permtest = FALSE)
 
             avg_per_group <- sils %>%
@@ -340,7 +449,7 @@ get_scores <- function(matrix,
             ci_intervals <- t.test(sils[["sil_width"]])$conf.int
 
             p_val <- perm_test(fun = calc_sil,
-                               data = results[["distance_matrix"]],
+                               data = as.dist(results[["distance_matrix"]]),
                                labels = cluster_labels,
                                obs = avg_sil,
                                ntests = ntests,
@@ -407,24 +516,6 @@ get_scores <- function(matrix,
         }
       })
     })
-
-    # Plot dendrogram  (TODO NEEDS REWORK) ###############################################
-    # pc2 <- pc$x[,1:ndim] %>%
-    #   as.data.frame() %>%
-    #   mutate(celltype = metadata[[df.score[x, 1]]])
-    #
-    # # Calculate the row-wise average grouping by row names
-    # pc2 <- aggregate(. ~ celltype, data = pc2, FUN = mean) %>%
-    #   tibble::column_to_rownames("celltype") %>%
-    #   as.matrix()
-    #
-    # dist_group <- stats::dist(pc2,
-    #                           method = df.score[x, 2])
-    # hclust <- stats::hclust(dist_group,
-    #                         method = hclust_method)
-    # dendo <- ggdendro::ggdendrogram(as.dendrogram(hclust)) +
-    #   ggtitle(paste0("Hierarchical clustering dendrogram - ",
-    #                  hclust_method))
 
 
     # Combine plots ###############################################
@@ -614,7 +705,6 @@ p_val_zscore <- function(obs,
 ### get_scores plot helpers
 
 plot_pca <- function(matrix,
-                     scale = FALSE,
                      label = "all",
                      invisible = c("var", "quali"),
                      geom_var = c("arrow", "text"),
@@ -637,7 +727,7 @@ plot_pca <- function(matrix,
   if (ncol(matrix) > 0) {
     res.pca <- stats::prcomp(matrix,
                              center = TRUE,
-                             scale. = scale)
+                             scale. = FALSE)
     suppressWarnings(
       suppressMessages(
         p <- factoextra::fviz_pca(res.pca,
@@ -746,4 +836,188 @@ combine_pvals <- function(list_pvals_n,
   list_pvals_n[["n"]] <- sum(list_pvals_n[["n"]])
 
   return(list_pvals_n)
+}
+
+
+# Temporary functions ##############################################################################
+
+scores_composite_pca <- function(scoot_summary,
+                                 scores
+                                 # label = "all",
+                                 # invisible = c("var", "quali"),
+                                 # geom_var = c("arrow", "text"),
+                                 # col_var = "steelblue",
+                                 # alpha_var = 0.3,
+                                 # repel = TRUE,
+                                 # color_cluster_by = "none",
+                                 # add_ellipses = FALSE
+                                 ) {
+
+  cluster_by <- names(scores)[!names(scores) %in% "params"]
+
+  results <- list()
+
+  for (c in cluster_by) {
+
+    ## L1 ###############################################
+
+    mat <- scores[[c]][["composition"]][["layer_1"]][["distance_matrix"]]
+    results[[c]][["matrices"]][["L1"]] <- mat
+
+    res.pca <- prcomp(mat)
+
+    clust_labels <- scoot_summary@metadata[match(row.names(mat), scoot_summary@metadata[["scoot_sample"]]), ][[c]]
+    sil <- cluster::silhouette(as.numeric(clust_labels), mat)
+    mean_sil <- sil[, 3] %>% mean() %>% round(3)
+
+    results[[c]][["plots"]][["L1"]] <- factoextra::fviz_pca(res.pca,
+                                                            habillage = clust_labels,
+                                                            label = "var",
+                                                            pointsize = 3,
+                                                            invisible = c("var", "quali"),
+                                                            geom = "point") +
+      ggtitle(paste("L1 - composition layer_1 - feature vector PCA\n Silhouette score:", mean_sil)) +
+      coord_equal()
+
+
+    ## L2 ###############################################
+
+    mats <- list()
+    for (i in names(scores[[c]][["composition"]][["layer_2"]])) {
+      mats <- c(mats, scores[[c]][["composition"]][["layer_2"]][[i]][["distance_matrix"]])
+    }
+
+    avg_matrix <- get_avg_matrix(mats)
+
+    results[[c]][["matrices"]][["L2"]] <- avg_matrix
+
+    res.pca <- prcomp(avg_matrix)
+
+    clust_labels <- scoot_summary@metadata[match(row.names(avg_matrix), scoot_summary@metadata[["scoot_sample"]]), ][[c]]
+    sil <- cluster::silhouette(as.numeric(clust_labels), avg_matrix)
+    mean_sil <- sil[, 3] %>% mean() %>% round(3)
+
+    results[[c]][["plots"]][["L2"]] <- factoextra::fviz_pca(res.pca,
+                                                            habillage = clust_labels,
+                                                            pointsize = 3,
+                                                            invisible = c("var", "quali"),
+                                                            geom = "point") +
+      ggtitle(paste("L2 - PCA based on 32 high-resolution cell subtype composition\nSilhouette score:", mean_sil)) +
+      coord_equal()
+
+
+    ## L3 ###############################################
+
+    mats <- list()
+    for (i in names(scores[[c]][["signatures"]][["layer_1"]])) {
+      mats <- c(mats, scores[[c]][["composition"]][["layer_1"]][[i]][["distance_matrix"]])
+    }
+    for (i in names(scores[[c]][["signatures"]][["layer_2"]])) {
+      mats <- c(mats, scores[[c]][["composition"]][["layer_1"]][[i]][["distance_matrix"]])
+    }
+
+    avg_matrix <- get_avg_matrix(mats)
+
+    results[[c]][["matrices"]][["L3"]] <- avg_matrix
+
+    res.pca <- prcomp(avg_matrix)
+
+    clust_labels <- scoot_summary@metadata[match(row.names(avg_matrix), scoot_summary@metadata[["scoot_sample"]]), ][[c]]
+    sil <- cluster::silhouette(as.numeric(clust_labels), avg_matrix)
+    mean_sil <- sil[, 3] %>% mean() %>% round(3)
+
+    results[[c]][["plots"]][["L3"]] <- factoextra::fviz_pca(res.pca,
+                                                            habillage = clust_labels,
+                                                            pointsize = 3,
+                                                            invisible = c("var", "quali"),
+                                                            geom = "point") +
+      ggtitle(paste("L3 - PCA based on signature expression per cell type\nSilhouette score:", mean_sil)) +
+      coord_equal()
+
+
+    ## L1_L2_L3_combined ###############################################
+
+    avg_matrix <- get_avg_matrix(combined_matrices)
+
+    results[[c]][["matrices"]][["L1_L2_L3_combined"]] <- avg_matrix
+
+    res.pca <- prcomp(avg_matrix)
+
+    clust_labels <- scoot_summary@metadata[match(row.names(avg_matrix), scoot_summary@metadata[["scoot_sample"]]), ][[c]]
+    sil <- cluster::silhouette(as.numeric(clust_labels), avg_matrix)
+    mean_sil <- sil[, 3] %>% mean() %>% round(3)
+
+    results[[c]][["plots"]][["L1_L2_L3_combined"]] <- factoextra::fviz_pca(res.pca,
+                                                                           habillage = clust_labels,
+                                                                           pointsize = 3,
+                                                                           invisible = c("var", "quali"),
+                                                                           geom = "point") +
+      ggtitle(paste("L1_L2_L3_combined - PCA \nSilhouette score:", mean_sil)) +
+      coord_equal()
+
+
+    ## Combined plot ###############################################
+
+    ewf
+  }
+
+  return(results)
+}
+
+
+## scores_composite_pca helper  ###############################################
+
+get_avg_matrix <- function(mats) {
+
+  # Identify all unique row and column names
+  all_row_names <- mats %>% lapply(row.names) %>% unlist() %>% unique()
+  all_col_names <- mats %>% lapply(colnames) %>% unlist() %>% unique()
+
+  # Extend each matrix to have all row and column names
+  extended_matrices <- lapply(mats,
+                              extend_matrix,
+                              all_rows = all_row_names,
+                              all_cols = all_col_names)
+
+  # Sum all extended matrices
+  sum_matrix <- Reduce("+", extended_matrices)
+
+  # Normalize sum_matrix by number of sample appearance
+  # E.g. one sample might have values for all matrices (e.g. have values for all 4 subtypes in layer 2)
+  # but another sample might be missing one subtype, so divide this one only by 3 (subtypes in layer 2)
+  avg_matrix <- sum_matrix
+  for (i in colnames(sum_matrix)) {
+    len <- 1
+    for (j in 1:length(extended_matrices)) {
+      if (!all(extended_matrices[[j]][i, ] == 0)) {
+        len <- len + 1
+      }
+    }
+    avg_matrix[i, ] <- avg_matrix[i, ] / len
+    avg_matrix[, i] <- avg_matrix[, i] / len
+  }
+
+  return(avg_matrix)
+}
+
+
+# Because not all sub cell types are present in all samples, we need to to create a common dist matrix
+# Define a function to extend a matrix to include all row and column names
+extend_matrix <- function(mat,
+                          all_rows,
+                          all_cols) {
+
+  # Create a matrix of zeros with the complete set of row and column names
+  extended_mat <- matrix(0,
+                         nrow = length(all_rows),
+                         ncol = length(all_cols),
+                         dimnames = list(all_rows,
+                                         all_cols))
+
+  # Assign values from the original matrix to the extended matrix
+  common_rows <- intersect(rownames(mat), all_rows)
+  common_cols <- intersect(colnames(mat), all_cols)
+  extended_mat[common_rows, common_cols] <- mat[common_rows, common_cols]
+
+  return(extended_mat)
 }
