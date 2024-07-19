@@ -959,11 +959,12 @@ merge_scoot_objects <- function(scoot_object = NULL,
 #' @importFrom factoextra fviz_pca fviz_nbclust fviz_cluster
 #' @importFrom scran buildKNNGraph
 #' @importFrom igraph modularity set_vertex_attr layout_nicely V strength gorder
-#' @importFrom patchwork wrap_plots plot_layout plot_annotation
+#' @importFrom patchwork wrap_plots plot_layout plot_annotation wrap_elements
 #' @importFrom ggraph ggraph geom_edge_link geom_node_point
 #' @importFrom metap sumlog sumz
 #' @importFrom cluster pam
 #' @importFrom NbClust NbClust
+#' @importFrom ggpubr get_legend as_ggplot
 
 #' @return Metrics of cell types pseudobulk clustering
 #' @export get_cluster_score

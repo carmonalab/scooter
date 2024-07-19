@@ -177,9 +177,6 @@ DESeq2.normalize <- function(matrix,
   data <- DESeq2::vst(data, blind = T, nsub = nsub)
   data <- SummarizedExperiment::assay(data)
 
-  # Remove black listed genes from the matrix
-  data <- data[!row.names(data) %in% black_list,]
-
   # get top variable genes
   rv <- MatrixGenerics::rowVars(data)
   select <- order(rv, decreasing=TRUE)[seq_len(min(nvar_genes, length(rv)))]
@@ -224,11 +221,15 @@ get_scores <- function(matrix,
     # Error in .Primitive("[")(x, 1:6, , drop = FALSE) : incorrect number of dimensions
 
     # Plot PCA ###############################################
-    results[["plots"]][["pca"]] <- plot_pca(matrix,
-                                            color_cluster_by = cluster_labels,
-                                            label = "var",
-                                            invisible = invisible) +
-      ggplot2::ggtitle("PCA")
+    results[["plots"]][["pca_loadings"]] <- plot_pca(matrix,
+                                                     color_cluster_by = cluster_labels,
+                                                     label = "var",
+                                                     invisible = invisible) +
+      ggplot2::ggtitle("PCA showing loadings")
+
+    results[["plots"]][["pca_samples"]] <- plot_pca(matrix,
+                                                    color_cluster_by = cluster_labels) +
+      ggplot2::ggtitle("PCA showing sample names")
 
     ## Plot PCA scree plot ###############################################
     #
@@ -254,7 +255,155 @@ get_scores <- function(matrix,
     #   theme_minimal()
 
 
-    # Clustering ###############################################
+    # Supervised: Calculate scores + plots ###############################################
+
+    scores_plot_list <- list()
+
+    suppressMessages({
+      suppressWarnings({
+
+        for (s in scores) {
+
+          ## Silhouette_isolated (new) ###############################################
+          if (s == "silhouette_isolated") {
+            sils <- calc_sil_onelabel(labels = cluster_labels,
+                                      dist = as.dist(results[["distance_matrix"]]),
+                                      return_mean_for_permtest = FALSE)
+
+            avg_per_group <- sils %>%
+              dplyr::group_by(group) %>%
+              dplyr::summarize(avg_sil_width = mean(sil_width))
+
+            avg_sil <- mean(sils[["sil_width"]])
+
+            ci_intervals <- stats::t.test(sils[["sil_width"]])$conf.int
+
+            p_val <- perm_test(fun = calc_sil_onelabel,
+                               data = as.dist(results[["distance_matrix"]]),
+                               labels = cluster_labels,
+                               obs = avg_sil,
+                               ntests = ntests,
+                               seed = seed)
+
+
+            results[["scores"]][[s]] <- list("samples" = sils,
+                                             "avg_per_group" = avg_per_group,
+                                             "summary" = avg_sil,
+                                             "conf_int" = ci_intervals,
+                                             "n" = nrow(sils),
+                                             "p_value" = p_val)
+
+            p <- plot_silhouette(sil_scores = results[["scores"]][[s]],
+                                 title = "Silhouette (isolated) plot")
+
+            scores_plot_list[[s]] <- p
+          }
+
+          ## Silhouette (original) ###############################################
+          if (s == "silhouette") {
+            sils <- calc_sil(labels = cluster_labels,
+                             dist = as.dist(results[["distance_matrix"]]),
+                             return_mean_for_permtest = FALSE)
+
+            avg_per_group <- sils %>%
+              dplyr::group_by(group) %>%
+              dplyr::summarize(avg_sil_width = mean(sil_width))
+
+            avg_sil <- mean(sils[["sil_width"]])
+
+            ci_intervals <- t.test(sils[["sil_width"]])$conf.int
+
+            p_val <- perm_test(fun = calc_sil,
+                               data = as.dist(results[["distance_matrix"]]),
+                               labels = cluster_labels,
+                               obs = avg_sil,
+                               ntests = ntests,
+                               seed = seed)
+
+            results[["scores"]][[s]] <- list("samples" = sils,
+                                             "avg_per_group" = avg_per_group,
+                                             "summary" = avg_sil,
+                                             "conf_int" = ci_intervals,
+                                             "n" = nrow(sils),
+                                             "p_value" = p_val)
+
+            p <- plot_silhouette(sil_scores = results[["scores"]][[s]],
+                                 title = "Silhouette plot")
+
+            scores_plot_list[[s]] <- p
+          }
+
+          ## Modularity ###############################################
+          if (s == "modularity") {
+
+            if (length(cluster_labels) >= (modularity_k + 1)) {
+              g <- scran::buildKNNGraph(matrix,
+                                        transposed = TRUE,
+                                        k = modularity_k)
+
+              # Calculate modularity score
+              modularity_score <- igraph::modularity(g, membership = as.numeric(factor(cluster_labels)))
+
+              # Plotting the graph
+              g <- igraph::set_vertex_attr(g, "name", value = cluster_labels)
+
+              p_val <- perm_test(fun = calc_modularity,
+                                 data = matrix,
+                                 labels = cluster_labels,
+                                 obs = modularity_score,
+                                 ntests = ntests,
+                                 seed = seed)
+
+              results[["scores"]][[s]] <- list("igraph" = g,
+                                               "summary" = modularity_score,
+                                               "n" = length(g),
+                                               "p_value" = p_val)
+
+              # Using ggraph layout = "kk" instead of default "stress",
+              # as "kk" handles disconnected communities much better (showing them separately, instead of fur balling them like "stress")
+              p <- ggraph::ggraph(g, layout = 'kk') +
+                ggraph::geom_edge_link(color = "grey", edge_width = 0.2) +
+                ggraph::geom_node_point(ggplot2::aes(fill = as.factor(names(igraph::V(g)))),
+                                        shape = 21,
+                                        color = "black",
+                                        size = 3) +
+                ggplot2::ggtitle(paste("kNN plot with k = ", modularity_k,
+                                       "\nModularity score = ", round(modularity_score, 3),
+                                       ifelse(!is.null(p_val),
+                                              paste("\np-value:",
+                                                    format.pval(p_val, digits = 3)), ""))) +
+                ggplot2::labs(fill = "Groups") +
+                ggplot2::theme(panel.background = element_rect(fill = "white"))
+
+              scores_plot_list[[s]] <- p
+            }
+          }
+        }
+      })
+    })
+
+    ## Combine scores plots ###############################################
+
+    # Extract the legend and convert to ggplot
+    leg <- ggpubr::get_legend(scores_plot_list[[1]])
+    scores_plot_list <- lapply(scores_plot_list, function (x) x + ggplot2::theme(legend.position="none"))
+    scores_plot_list[["leg_plot"]] <- ggpubr::as_ggplot(leg)
+
+    results[["plots"]][["scores_combined"]] <-
+      patchwork::wrap_elements(
+        patchwork::wrap_plots(scores_plot_list,
+                              ncol = 2) +
+          patchwork::plot_layout(widths = 1) +
+          patchwork::plot_annotation("Supervised scores",
+                                     theme = ggplot2::theme(plot.title = ggplot2::element_text(face = "bold",
+                                                                                               hjust = 0,
+                                                                                               size = 20)))
+      )
+
+
+    # Unsupervised clustering ###############################################
+
+    cluster_plot_list <- list()
 
     # Set maximum number of clusters (cannot be more than samples - 1)
     if (length(cluster_labels) <= max_nc) {
@@ -313,16 +462,22 @@ get_scores <- function(matrix,
 
     # Plot PCA
     if (nclust == 1) {
-      results[["plots"]][["pca_hclust_clustered"]] <- plot_pca(matrix)
+      cluster_plot_list[["pca_hclust_clustered"]] <- plot_pca(matrix,
+                                                              label = "var",
+                                                              pointsize = 1.5) +
+        ggplot2::ggtitle("Hierarchical\nMethod: ward.D2")
     } else {
       # For each method (column) get consensus cluster assignment
       hclust_clusters <- apply(cluster_labels_df, 1, function(x) names(which.max(table(x)))) %>%
         as.factor()
 
-      results[["plots"]][["pca_hclust_clustered"]] <- plot_pca(matrix,
-                                                               color_cluster_by = hclust_clusters,
-                                                               add_ellipses = TRUE) +
-        ggplot2::ggtitle("PCA - Hierarchical clustering (ward.D2)")
+      cluster_plot_list[["pca_hclust_clustered"]] <- plot_pca(matrix,
+                                                              label = "var",
+                                                              pointsize = 1.5,
+                                                              color_cluster_by = hclust_clusters,
+                                                              add_ellipses = TRUE) +
+        ggplot2::ggtitle("Hierarchical\nMethod: ward.D2") +
+        ggplot2::theme(legend.position="none")
     }
 
 
@@ -353,12 +508,18 @@ get_scores <- function(matrix,
 
     # Plot PCA
     if (nclust == 1) {
-      results[["plots"]][["pca_pam_clustered"]] <- plot_pca(matrix)
+      cluster_plot_list[["pca_pam_clustered"]] <- plot_pca(matrix,
+                                                           label = "var",
+                                                           pointsize = 1.5) +
+        ggplot2::ggtitle(paste0("PAM\nk: ", nclust))
     } else {
-      results[["plots"]][["pca_pam_clustered"]] <- plot_pca(matrix,
-                                                            color_cluster_by = pam_clusters,
-                                                            add_ellipses = TRUE) +
-        ggplot2::ggtitle(paste0("PCA - PAM clustered\nNumber of clusters: ", nclust))
+      cluster_plot_list[["pca_pam_clustered"]] <- plot_pca(matrix,
+                                                           label = "var",
+                                                           pointsize = 1.5,
+                                                           color_cluster_by = pam_clusters,
+                                                           add_ellipses = TRUE) +
+        ggplot2::ggtitle(paste0("PAM\nk: ", nclust)) +
+        ggplot2::theme(legend.position="none")
     }
 
 
@@ -370,12 +531,18 @@ get_scores <- function(matrix,
 
     # Plot PCA
     if (length(unique(leiden_clusters)) == 1) {
-      results[["plots"]][["pca_leiden_clustered"]] <- plot_pca(matrix)
+      cluster_plot_list[["pca_leiden_clustered"]] <- plot_pca(matrix,
+                                                              label = "var",
+                                                              pointsize = 1.5) +
+        ggplot2::ggtitle(paste0("Leiden\nResolution: ", round(r, 4)))
     } else {
-      results[["plots"]][["pca_leiden_clustered"]] <- plot_pca(matrix,
-                                                               color_cluster_by = leiden_clusters,
-                                                               add_ellipses = TRUE) +
-        ggplot2::ggtitle(paste0("PCA - Leiden clustered\nResolution: ", round(r, 4)))
+      cluster_plot_list[["pca_leiden_clustered"]] <- plot_pca(matrix,
+                                                              label = "var",
+                                                              pointsize = 1.5,
+                                                              color_cluster_by = leiden_clusters,
+                                                              add_ellipses = TRUE) +
+        ggplot2::ggtitle(paste0("Leiden\nResolution: ", round(r, 4))) +
+        ggplot2::theme(legend.position="none")
     }
 
 
@@ -386,142 +553,37 @@ get_scores <- function(matrix,
 
     # Plot PCA
     if (length(unique(hdbscan_clusters)) == 1) {
-      results[["plots"]][["pca_hdbscan_clustered"]] <- plot_pca(matrix)
+      cluster_plot_list[["pca_hdbscan_clustered"]] <- plot_pca(matrix,
+                                                               label = "var",
+                                                               pointsize = 1.5) +
+        ggplot2::ggtitle(paste0("HDBSCAN\nminPts: ", hdbscan_min_pts))
     } else {
-      results[["plots"]][["pca_hdbscan_clustered"]] <- plot_pca(matrix,
+      cluster_plot_list[["pca_hdbscan_clustered"]] <- plot_pca(matrix,
+                                                               label = "var",
+                                                               pointsize = 1.5,
                                                                color_cluster_by = hdbscan_clusters,
                                                                add_ellipses = TRUE) +
-        ggplot2::ggtitle(paste0("PCA - HDBSCAN clustered\nHDBSCAN minPts: ", hdbscan_min_pts))
+        ggplot2::ggtitle(paste0("HDBSCAN\nminPts: ", hdbscan_min_pts)) +
+        ggplot2::theme(legend.position="none")
     }
 
 
-    # Calculate scores + plots ###############################################
+    ## Combine clustering plots ###############################################
 
-    suppressMessages({
-      suppressWarnings({
-
-        for (s in scores) {
-
-          ## Silhouette_isolated (new) ###############################################
-          if (s == "silhouette_isolated") {
-            sils <- calc_sil_onelabel(labels = cluster_labels,
-                                      dist = as.dist(results[["distance_matrix"]]),
-                                      return_mean_for_permtest = FALSE)
-
-            avg_per_group <- sils %>%
-              dplyr::group_by(group) %>%
-              dplyr::summarize(avg_sil_width = mean(sil_width))
-
-            avg_sil <- mean(sils[["sil_width"]])
-
-            ci_intervals <- stats::t.test(sils[["sil_width"]])$conf.int
-
-            p_val <- perm_test(fun = calc_sil_onelabel,
-                               data = as.dist(results[["distance_matrix"]]),
-                               labels = cluster_labels,
-                               obs = avg_sil,
-                               ntests = ntests,
-                               seed = seed)
-
-
-            results[["scores"]][[s]] <- list("samples" = sils,
-                                             "avg_per_group" = avg_per_group,
-                                             "summary" = avg_sil,
-                                             "conf_int" = ci_intervals,
-                                             "n" = nrow(sils),
-                                             "p_value" = p_val)
-
-            p <- plot_silhouette(sil_scores = results[["scores"]][[s]],
-                                 title = "Silhouette (isolated) plot")
-
-            results[["plots"]][[s]] <- p
-          }
-
-          ## Silhouette (original) ###############################################
-          if (s == "silhouette") {
-            sils <- calc_sil(labels = cluster_labels,
-                             dist = as.dist(results[["distance_matrix"]]),
-                             return_mean_for_permtest = FALSE)
-
-            avg_per_group <- sils %>%
-              dplyr::group_by(group) %>%
-              dplyr::summarize(avg_sil_width = mean(sil_width))
-
-            avg_sil <- mean(sils[["sil_width"]])
-
-            ci_intervals <- t.test(sils[["sil_width"]])$conf.int
-
-            p_val <- perm_test(fun = calc_sil,
-                               data = as.dist(results[["distance_matrix"]]),
-                               labels = cluster_labels,
-                               obs = avg_sil,
-                               ntests = ntests,
-                               seed = seed)
-
-            results[["scores"]][[s]] <- list("samples" = sils,
-                                             "avg_per_group" = avg_per_group,
-                                             "summary" = avg_sil,
-                                             "conf_int" = ci_intervals,
-                                             "n" = nrow(sils),
-                                             "p_value" = p_val)
-
-            p <- plot_silhouette(sil_scores = results[["scores"]][[s]],
-                                 title = "Silhouette plot")
-
-            results[["plots"]][[s]] <- p
-          }
-
-          ## Modularity ###############################################
-          if (s == "modularity") {
-
-            if (length(cluster_labels) >= (modularity_k + 1)) {
-              g <- scran::buildKNNGraph(matrix,
-                                        transposed = TRUE,
-                                        k = modularity_k)
-
-              # Calculate modularity score
-              modularity_score <- igraph::modularity(g, membership = as.numeric(factor(cluster_labels)))
-
-              # Plotting the graph
-              g <- igraph::set_vertex_attr(g, "name", value = cluster_labels)
-
-              p_val <- perm_test(fun = calc_modularity,
-                                 data = matrix,
-                                 labels = cluster_labels,
-                                 obs = modularity_score,
-                                 ntests = ntests,
-                                 seed = seed)
-
-              results[["scores"]][[s]] <- list("igraph" = g,
-                                               "summary" = modularity_score,
-                                               "n" = length(g),
-                                               "p_value" = p_val)
-
-              # Using ggraph layout = "kk" instead of default "stress",
-              # as "kk" handles disconnected communities much better (showing them separately, instead of fur balling them like "stress")
-              p <- ggraph::ggraph(g, layout = 'kk') +
-                ggraph::geom_edge_link(color = "grey", edge_width = 0.2) +
-                ggraph::geom_node_point(ggplot2::aes(fill = as.factor(names(igraph::V(g)))),
-                                        shape = 21,
-                                        color = "black",
-                                        size = 5) +
-                ggplot2::ggtitle(paste("KNN plot with k = ", modularity_k,
-                                       "\nModularity score = ", round(modularity_score, 3),
-                                       ifelse(!is.null(p_val),
-                                              paste("\np-value:",
-                                                    format.pval(p_val, digits = 3)), ""))) +
-                ggplot2::labs(fill = "Groups") +
-                ggplot2::theme(panel.background = element_rect(fill = "white"))
-
-              results[["plots"]][[s]] <- p
-            }
-          }
-        }
-      })
-    })
+    results[["plots"]][["clustering_combined"]] <-
+      patchwork::wrap_elements(
+        patchwork::wrap_plots(cluster_plot_list,
+                              ncol = 2) +
+          patchwork::plot_layout(widths = 1) +
+          patchwork::plot_annotation("Unsupervised clustering",
+                                     theme = ggplot2::theme(plot.title = ggplot2::element_text(face = "bold",
+                                                                                               hjust = 0,
+                                                                                               size = 20)))
+      )
 
 
     # Combine plots ###############################################
+
     results[["plots"]][["summary_plot"]] <- patchwork::wrap_plots(results[["plots"]],
                                                                   ncol = 2) +
       patchwork::plot_layout(widths = 1) +
@@ -529,6 +591,10 @@ get_scores <- function(matrix,
                                  theme = ggplot2::theme(plot.title = ggplot2::element_text(face = "bold",
                                                                                            hjust = 0,
                                                                                            size = 20)))
+
+    results[["plots"]][["scores"]] <- scores_plot_list
+    results[["plots"]][["clustering"]] <- cluster_plot_list
+
     return(results)
 
   } else {
@@ -709,6 +775,7 @@ p_val_zscore <- function(obs,
 
 plot_pca <- function(matrix,
                      label = "all",
+                     pointsize = 3,
                      invisible = c("var", "quali"),
                      geom_var = c("arrow", "text"),
                      col_var = "steelblue",
@@ -737,7 +804,7 @@ plot_pca <- function(matrix,
                                   habillage = color_cluster_by,
                                   addEllipses = add_ellipses,
                                   label = label,
-                                  pointsize = 3,
+                                  pointsize = pointsize,
                                   invisible = invisible,
                                   geom.var = geom_var,
                                   col.var = col_var,
@@ -771,8 +838,8 @@ plot_silhouette <- function(sil_scores,
                    axis.text.x = ggplot2::element_blank(),
                    axis.ticks.x = ggplot2::element_blank()) +
     ggplot2::ggtitle(paste0(title,
-                            "\nAverage silhouette width = ", round(m, 3),
-                            "   95% CI: [", round(ci[1], 3), ", ", round(ci[2], 3), "]",
+                            "\nAvg sil width = ", round(m, 3),
+                            "\n95% CI: [", round(ci[1], 3), ", ", round(ci[2], 3), "]",
                             ifelse(!is.null(sil_scores[["p_value"]]),
                                    paste("\np-value: ",
                                          format.pval(sil_scores[["p_value"]],
