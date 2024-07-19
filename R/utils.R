@@ -156,9 +156,12 @@ DESeq2.normalize <- function(matrix,
 
   # Get black list
   if (is.null(black_list)) {
-    utils::data("default_black_list")
+    data(default_black_list, envir=environment())
   }
   black_list <- unlist(black_list)
+
+  # Remove black listed genes from the matrix
+  matrix <- matrix[!row.names(matrix) %in% black_list,]
 
   # Normalize pseudobulk data using DESeq2
   # do formula for design with the cluster_by elements in order
