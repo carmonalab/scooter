@@ -20,11 +20,12 @@ get_cluster_score(
   seed = 22,
   pval_combine_method = "weighted_zmethod",
   pca_comps_labs_invisible = c("quali"),
-  pca_pb_labs_invisible = c("var", "quali"),
+  pca_pb_labs_invisible = c("quali"),
   pca_sig_labs_invisible = c("quali"),
   ndim = 10,
   nvar_genes = 500,
   black_list = NULL,
+  pca_n_hvg = 20,
   ncores = round(parallelly::availableCores() - 2),
   bparam = NULL,
   progressbar = TRUE
@@ -66,6 +67,8 @@ get_cluster_score(
 \item{nvar_genes}{Number of variable genes to assess samples. Default is 500.}
 
 \item{black_list}{List of genes to discard from clustering, if "default" object "default_black_list" object is used. Alternative black listed genes can be provided as a vector or list.}
+
+\item{pca_n_hvg}{Number of most highly variable genes to plot on the PCA (for pseudobulks).}
 
 \item{ncores}{The number of cores to use, by default, all available cores - 2.}
 

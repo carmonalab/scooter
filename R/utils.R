@@ -202,7 +202,8 @@ get_scores <- function(matrix,
                        seed = 22, # seed for random shuffling
                        title = "", # Title for summary
                        # For PCA
-                       invisible = c("var", "quali")) {
+                       invisible = c("var", "quali"),
+                       select_var = NULL) {
 
   matrix <- t(matrix)
 
@@ -224,7 +225,8 @@ get_scores <- function(matrix,
     results[["plots"]][["pca_loadings"]] <- plot_pca(matrix,
                                                      color_cluster_by = cluster_labels,
                                                      label = "var",
-                                                     invisible = invisible) +
+                                                     invisible = invisible,
+                                                     select_var = select_var) +
       ggplot2::ggtitle("PCA showing loadings")
 
     results[["plots"]][["pca_samples"]] <- plot_pca(matrix,
@@ -777,6 +779,7 @@ plot_pca <- function(matrix,
                      label = "all",
                      pointsize = 3,
                      invisible = c("var", "quali"),
+                     select_var = NULL,
                      geom_var = c("arrow", "text"),
                      col_var = "steelblue",
                      alpha_var = 0.3,
@@ -806,6 +809,7 @@ plot_pca <- function(matrix,
                                   label = label,
                                   pointsize = pointsize,
                                   invisible = invisible,
+                                  select.var = select_var,
                                   geom.var = geom_var,
                                   col.var = col_var,
                                   alpha.var = alpha_var,

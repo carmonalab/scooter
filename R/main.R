@@ -936,6 +936,7 @@ merge_scoot_objects <- function(scoot_object = NULL,
 #' @param ndim Number of dimensions to be use for PCA clustering metrics. Default is 10.
 #' @param nvar_genes Number of variable genes to assess samples. Default is 500.
 #' @param black_list List of genes to discard from clustering, if "default" object "default_black_list" object is used. Alternative black listed genes can be provided as a vector or list.
+#' @param pca_n_hvg Number of most highly variable genes to plot on the PCA (for pseudobulks).
 #' @param ncores The number of cores to use, by default, all available cores - 2.
 #' @param bparam A \code{BiocParallel::bpparam()} object that tells how to parallelize. If provided, it overrides the `ncores` parameter.
 #' @param progressbar Whether to show a progressbar or not
@@ -959,7 +960,7 @@ merge_scoot_objects <- function(scoot_object = NULL,
 #' @importFrom factoextra fviz_pca fviz_nbclust fviz_cluster
 #' @importFrom scran buildKNNGraph
 #' @importFrom igraph modularity set_vertex_attr layout_nicely V strength gorder
-#' @importFrom patchwork wrap_plots plot_layout plot_annotation wrap_elements
+#' @importFrom patchwork wrap_plots plot_layout plot_annotation wrap_elements plot_spacer
 #' @importFrom ggraph ggraph geom_edge_link geom_node_point
 #' @importFrom metap sumlog sumz
 #' @importFrom cluster pam
@@ -990,13 +991,14 @@ get_cluster_score <- function(scoot_object = NULL,
 
                               # For PCA
                               pca_comps_labs_invisible = c("quali"),
-                              pca_pb_labs_invisible = c("var", "quali"),
+                              pca_pb_labs_invisible = c("quali"),
                               pca_sig_labs_invisible = c("quali"),
 
                               # Pseudobulk params
                               ndim = 10,
                               nvar_genes = 500,
                               black_list = NULL,
+                              pca_n_hvg = 20,
 
                               ncores = round(parallelly::availableCores() - 2),
                               bparam = NULL,
@@ -1339,7 +1341,8 @@ get_cluster_score <- function(scoot_object = NULL,
                                               stringr::str_to_title(type),
                                               layer,
                                               i),
-                                invisible = pca_pb_labs_invisible)
+                                invisible = pca_pb_labs_invisible,
+                                select_var = list(cos2 = pca_n_hvg))
               return(res)
             } else {
               return(NULL)
@@ -1383,7 +1386,8 @@ get_cluster_score <- function(scoot_object = NULL,
                                                  stringr::str_to_title(type),
                                                  layer,
                                                  i),
-                                   invisible = pca_pb_labs_invisible)
+                                   invisible = pca_pb_labs_invisible,
+                                   select_var = list(cos2 = pca_n_hvg))
                     }
                   }
                   for (score in scores) {
