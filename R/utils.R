@@ -915,8 +915,8 @@ combine_pvals <- function(list_pvals_n,
 
 # Temporary functions ##############################################################################
 
-scores_composite_pca <- function(scoot_summary,
-                                 scores
+scores_composite_pca <- function(scores,
+                                 scoot_summary
                                  # label = "all",
                                  # invisible = c("var", "quali"),
                                  # geom_var = c("arrow", "text"),
@@ -925,7 +925,7 @@ scores_composite_pca <- function(scoot_summary,
                                  # repel = TRUE,
                                  # color_cluster_by = "none",
                                  # add_ellipses = FALSE
-                                 ) {
+) {
 
   cluster_by <- names(scores)[!names(scores) %in% "params"]
 
@@ -933,7 +933,7 @@ scores_composite_pca <- function(scoot_summary,
 
   for (c in cluster_by) {
 
-    ## L1 ###############################################
+    # L1 ###############################################
 
     mat <- scores[[c]][["composition"]][["layer_1"]][["distance_matrix"]]
     results[[c]][["matrices"]][["L1"]] <- mat
@@ -950,15 +950,15 @@ scores_composite_pca <- function(scoot_summary,
                                                             pointsize = 3,
                                                             invisible = c("var", "quali"),
                                                             geom = "point") +
-      ggtitle(paste("L1 - composition layer_1 - feature vector PCA\n Silhouette score:", mean_sil)) +
+      ggtitle(paste("L1 - PCA based on low-res cell type composition\n Silhouette score:", mean_sil)) +
       coord_equal()
 
 
-    ## L2 ###############################################
+    # L2 ###############################################
 
     mats <- list()
     for (i in names(scores[[c]][["composition"]][["layer_2"]])) {
-      mats <- c(mats, scores[[c]][["composition"]][["layer_2"]][[i]][["distance_matrix"]])
+      mats[[i]] <- scores[[c]][["composition"]][["layer_2"]][[i]][["distance_matrix"]]
     }
 
     avg_matrix <- get_avg_matrix(mats)
@@ -976,18 +976,18 @@ scores_composite_pca <- function(scoot_summary,
                                                             pointsize = 3,
                                                             invisible = c("var", "quali"),
                                                             geom = "point") +
-      ggtitle(paste("L2 - PCA based on 32 high-resolution cell subtype composition\nSilhouette score:", mean_sil)) +
+      ggtitle(paste("L2 - PCA based on hi-res cell type composition\nSilhouette score:", mean_sil)) +
       coord_equal()
 
 
-    ## L3 ###############################################
+    # L3 ###############################################
 
     mats <- list()
     for (i in names(scores[[c]][["signatures"]][["layer_1"]])) {
-      mats <- c(mats, scores[[c]][["composition"]][["layer_1"]][[i]][["distance_matrix"]])
+      mats[[paste0("layer_1_", i)]] <- scores[[c]][["signatures"]][["layer_1"]][[i]][["distance_matrix"]]
     }
     for (i in names(scores[[c]][["signatures"]][["layer_2"]])) {
-      mats <- c(mats, scores[[c]][["composition"]][["layer_1"]][[i]][["distance_matrix"]])
+      mats[[paste0("layer_2_", i)]] <- scores[[c]][["signatures"]][["layer_1"]][[i]][["distance_matrix"]]
     }
 
     avg_matrix <- get_avg_matrix(mats)
@@ -1009,9 +1009,9 @@ scores_composite_pca <- function(scoot_summary,
       coord_equal()
 
 
-    ## L1_L2_L3_combined ###############################################
+    # L1_L2_L3_combined ###############################################
 
-    avg_matrix <- get_avg_matrix(combined_matrices)
+    avg_matrix <- get_avg_matrix(results[[c]][["matrices"]])
 
     results[[c]][["matrices"]][["L1_L2_L3_combined"]] <- avg_matrix
 
@@ -1030,9 +1030,40 @@ scores_composite_pca <- function(scoot_summary,
       coord_equal()
 
 
-    ## Combined plot ###############################################
+    # B1 ###############################################
 
-    ewf
+    mat <- scores[[c]][["pseudobulk"]][["layer_1"]][["all"]][["feature_matrix"]] %>%
+      cosine_distance_proxy()
+    results[[c]][["matrices"]][["B1"]] <- mat
+
+    res.pca <- prcomp(mat)
+
+    clust_labels <- scoot_summary@metadata[match(row.names(mat), scoot_summary@metadata[["scoot_sample"]]), ][[c]]
+    sil <- cluster::silhouette(as.numeric(clust_labels), mat)
+    mean_sil <- sil[, 3] %>% mean() %>% round(3)
+
+    results[[c]][["plots"]][["B1"]] <- factoextra::fviz_pca(res.pca,
+                                                            habillage = clust_labels,
+                                                            label = "var",
+                                                            pointsize = 3,
+                                                            invisible = c("var", "quali"),
+                                                            geom = "point") +
+      ggtitle(paste("B1 - pseudobulk PCA\n Silhouette score:", mean_sil)) +
+      coord_equal()
+
+
+    # Combine plots ###############################################
+
+    results[[c]][["plots"]][["summary_plot"]] <-
+      patchwork::wrap_plots(results[[c]][["plots"]][["B1"]],
+                            results[[c]][["plots"]][["L1_L2_L3_combined"]],
+                            patchwork::plot_spacer(),
+                            results[[c]][["plots"]][["L1"]],
+                            results[[c]][["plots"]][["L2"]],
+                            results[[c]][["plots"]][["L3"]],
+                            nrow = 2) +
+      patchwork::plot_layout(widths = 1)
+    print(results[[c]][["plots"]][["summary_plot"]])
   }
 
   return(results)
@@ -1068,7 +1099,7 @@ get_avg_matrix <- function(mats) {
       }
     }
     avg_matrix[i, ] <- avg_matrix[i, ] / len
-    avg_matrix[, i] <- avg_matrix[, i] / len
+    # avg_matrix[, i] <- avg_matrix[, i] / len
   }
 
   return(avg_matrix)
