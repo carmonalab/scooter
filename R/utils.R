@@ -489,7 +489,7 @@ get_scores <- function(matrix,
       # Find number of clusters with PAM and silhouette method
 
       p <-
-        factoextra::fviz_nbclust(x = results[["distance_matrix"]],
+        factoextra::fviz_nbclust(x = matrix,
                                  FUNcluster = cluster::pam,
                                  method = "silhouette",
                                  k.max = max_nc_adj,
