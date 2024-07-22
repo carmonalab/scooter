@@ -146,7 +146,10 @@ preproc_pseudobulk <- function(matrix,
 
 
 
-### Just a helper for preproc_pseudobulk, additional pre-processing steps are needed
+### Just a helper for preproc_pseudobulk, if additional pre-processing steps are needed
+
+#' @importFrom DESeq2 DESeqDataSetFromMatrix vst estimateSizeFactors
+#' @importFrom SummarizedExperiment assay
 
 DESeq2.normalize <- function(matrix,
                              metadata,
@@ -188,7 +191,14 @@ DESeq2.normalize <- function(matrix,
 }
 
 
-
+#' @importFrom cluster pam
+#' @importFrom NbClust NbClust
+#' @importFrom ggpubr get_legend as_ggplot
+#' @importFrom factoextra fviz_pca fviz_nbclust
+#' @importFrom scran buildKNNGraph
+#' @importFrom igraph modularity set_vertex_attr layout_nicely V strength gorder
+#' @importFrom patchwork wrap_plots plot_layout plot_annotation wrap_elements plot_spacer
+#' @importFrom ggraph ggraph geom_edge_link geom_node_point
 
 get_scores <- function(matrix,
                        cluster_labels,
@@ -1032,8 +1042,7 @@ scores_composite_pca <- function(scores,
 
     # B1 ###############################################
 
-    mat <- scores[[c]][["pseudobulk"]][["layer_1"]][["all"]][["feature_matrix"]] %>%
-      cosine_distance_proxy()
+    mat <- scores[[c]][["pseudobulk"]][["layer_1"]][["all"]][["distance_matrix"]]
     results[[c]][["matrices"]][["B1"]] <- mat
 
     res.pca <- prcomp(mat)

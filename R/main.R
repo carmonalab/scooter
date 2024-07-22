@@ -948,24 +948,13 @@ merge_scoot_objects <- function(scoot_object = NULL,
 #' @importFrom dplyr mutate mutate_if filter %>% coalesce mutate_all full_join row_number
 #' @importFrom BiocParallel MulticoreParam bplapply
 #' @importFrom tibble rownames_to_column column_to_rownames remove_rownames
-#' @importFrom caret nearZeroVar
 #' @importFrom ggplot2 aes geom_point guides theme geom_col labs guide_legend annotate theme_bw ggtitle geom_ribbon element_text
-#' @importFrom DESeq2 DESeqDataSetFromMatrix vst estimateSizeFactors
 #' @importFrom MatrixGenerics rowVars rowMins
-#' @importFrom SummarizedExperiment assay
 #' @importFrom BiocGenerics counts
-#' @importFrom ggdendro ggdendrogram
 #' @importFrom stringr str_to_title
 #' @importFrom stats prcomp na.omit formula pnorm t.test
-#' @importFrom factoextra fviz_pca fviz_nbclust fviz_cluster
-#' @importFrom scran buildKNNGraph
-#' @importFrom igraph modularity set_vertex_attr layout_nicely V strength gorder
-#' @importFrom patchwork wrap_plots plot_layout plot_annotation wrap_elements plot_spacer
-#' @importFrom ggraph ggraph geom_edge_link geom_node_point
 #' @importFrom metap sumlog sumz
-#' @importFrom cluster pam
-#' @importFrom NbClust NbClust
-#' @importFrom ggpubr get_legend as_ggplot
+
 
 #' @return Metrics of cell types pseudobulk clustering
 #' @export get_cluster_score
