@@ -30,7 +30,8 @@ scoot <- function(object,
                   split_by = NULL,
                   min_cells_composition = 10,
                   min_cells_aggregated = 10,
-                  name_additional_signatures = NULL,
+                  name_additional_signatures = c("IFN_UCell", "HeatShock_UCell",
+                                                 "cellCycle.G1S_UCell", "cellCycle.G2M_UCell"),
                   useNA = FALSE,
                   clr_zero_impute_perc = 1,
                   layer_links = c("scGate_multi" = "functional.cluster"),
@@ -129,7 +130,8 @@ scoot_helper <- function(object,
   # Extract values from misc slot from object
   if (any(group_by == "scGate_multi")) {
     if (is.null(name_additional_signatures)) {
-      name_additional_signatures <- object@misc$layer_1_param$additional_signatures
+      name_additional_signatures <- c("IFN_UCell", "HeatShock_UCell",
+                                      "cellCycle.G1S_UCell", "cellCycle.G2M_UCell")
     }
   }
 
@@ -329,7 +331,7 @@ get_celltype_composition <- function(object = NULL,
             ctable <- list()
           } else {
             lay <- layer_links[which(layer_links == group_by_composition[[i]])]
-            if (lay %in% names(object@misc$layer_2_param)) {
+            if (lay %in% names(object@misc$layer2_param)) {
               meta_split <- split(meta.data,
                                   meta.data[[names(lay)]])
               # switch list names to cell ontology ID
@@ -342,7 +344,7 @@ get_celltype_composition <- function(object = NULL,
                 unname() %>%
                 unlist()
 
-              levs <- object@misc$layer_2_param[[lay]]$levels2_per_levels1
+              levs <- object@misc$layer2_param[[lay]]$levels2_per_levels1
               names(levs) <- names(cellonto_dic[match(names(levs), cellonto_dic)])
 
               # If a celltype was not detected, drop it
@@ -602,58 +604,49 @@ get_aggregated_signature <- function(object,
   }
 
   if (is.null(name_additional_signatures)) {
-    name_additional_signatures <- object@misc$layer_1_param$additional_signatures
-  }
-
-  if (is.null(name_additional_signatures)) {
-    message("No additional signatures indicated. Returning NULL")
     aggr_sig <- NULL
   } else {
 
-    if (!any(grepl(paste(name_additional_signatures, collapse = "|"),
-                   names(meta.data)))) {
-      stop("No additional signatures found in this object metadata")
-    }
+    if (!any(name_additional_signatures %in% colnames(meta.data))) {
+      aggr_sig <- NULL
+      message("No signatures columns found in this object's metadata")
+    } else {
+      add_sig_cols <- name_additional_signatures[name_additional_signatures %in%
+                                                   colnames(meta.data)]
 
-    add_sig_cols <- grep(paste(name_additional_signatures, collapse = "|"),
-                         names(meta.data), value = TRUE)
+      if (length(add_sig_cols) < length(name_additional_signatures)) {
+        not_found <- name_additional_signatures[!name_additional_signatures %in%
+                                                  colnames(meta.data)]
+        message(paste("The following additional signature columns were not found
+                    in the object's metadata colnames: ", not_found))
+      }
 
-    if (length(add_sig_cols) > length(name_additional_signatures)) {
-      for (i in name_additional_signatures) {
-        if (sum(grep(i, names(meta.data))) > 1) {
-          meta_cols <- names(meta.data)[grep(i, names(meta.data))]
-          message(paste("Signatue", i, "was found in multiple metadata columns:", meta_cols))
+      aggr_sig <- list()
+
+      for (e in names(group_by_aggregated)) {
+        # remove from aggregated data cell with less than min_cells_aggregated
+        cnts <- compositional_data(meta.data,
+                                   group_by_1 = group_by_aggregated[[e]],
+                                   only_counts = TRUE,
+                                   useNA = useNA)
+
+        keep <- cnts[cnts[["cell_counts"]] > min_cells_aggregated, 1] %>%
+          unlist()
+
+
+        aggr_sig[[e]] <- meta.data %>%
+          dplyr::filter(.data[[group_by_aggregated[[e]]]] %in% keep) %>%
+          dplyr::group_by(.data[[group_by_aggregated[[e]]]]) %>%
+          dplyr::summarize_at(add_sig_cols, fun, na.rm = TRUE)
+
+        # filter out NA if useNA=F
+        if (!useNA) {
+          aggr_sig[[e]] <- aggr_sig[[e]] %>%
+            dplyr::filter(!is.na(.data[[group_by_aggregated[[e]]]]))
         }
+
+        colnames(aggr_sig[[e]])[1] <- "celltype"
       }
-      stop("The name of at least one signature provided was found in multiple metadata columns.
-           Please give them a more unique name, e.g. by appending '_signature' to the name")
-    }
-
-    aggr_sig <- list()
-
-    for (e in names(group_by_aggregated)) {
-      # remove from aggregated data cell with less than min_cells_aggregated
-      cnts <- compositional_data(meta.data,
-                                 group_by_1 = group_by_aggregated[[e]],
-                                 only_counts = TRUE,
-                                 useNA = useNA)
-
-      keep <- cnts[cnts[["cell_counts"]] > min_cells_aggregated, 1] %>%
-        unlist()
-
-
-      aggr_sig[[e]] <- meta.data %>%
-        dplyr::filter(.data[[group_by_aggregated[[e]]]] %in% keep) %>%
-        dplyr::group_by(.data[[group_by_aggregated[[e]]]]) %>%
-        dplyr::summarize_at(add_sig_cols, fun, na.rm = TRUE)
-
-      # filter out NA if useNA=F
-      if (!useNA) {
-        aggr_sig[[e]] <- aggr_sig[[e]] %>%
-          dplyr::filter(!is.na(.data[[group_by_aggregated[[e]]]]))
-      }
-
-      colnames(aggr_sig[[e]])[1] <- "celltype"
     }
   }
   return(aggr_sig)
@@ -674,8 +667,6 @@ get_aggregated_signature <- function(object,
 
 #' @importFrom dplyr mutate mutate_if filter %>% mutate_all full_join
 #' @importFrom tibble column_to_rownames rownames_to_column
-#' @importFrom BiocParallel MulticoreParam bplapply
-#' @importFrom parallelly availableCores
 #' @importFrom data.table rbindlist
 #' @importFrom methods slot
 
@@ -687,9 +678,6 @@ merge_scoot_objects <- function(scoot_object = NULL,
                                 group_by = NULL,
                                 metadata_vars = NULL,
                                 pseudobulk_matrix = "list",
-                                ncores = parallelly::availableCores() - 2,
-                                bparam = NULL,
-                                progressbar = FALSE,
                                 verbose = FALSE) {
 
   if (is.null(scoot_object) ||
@@ -979,7 +967,7 @@ get_cluster_score <- function(scoot_object = NULL,
                               black_list = NULL,
                               pca_n_hvg = 20,
 
-                              ncores = round(parallelly::availableCores() - 2),
+                              ncores = round(parallelly::availableCores() / 2), # Otherwise can lead to memory issues
                               bparam = NULL,
                               progressbar = TRUE) {
 

@@ -26,7 +26,7 @@ get_cluster_score(
   nvar_genes = 500,
   black_list = NULL,
   pca_n_hvg = 20,
-  ncores = round(parallelly::availableCores() - 2),
+  ncores = round(parallelly::availableCores()/2),
   bparam = NULL,
   progressbar = TRUE
 )
