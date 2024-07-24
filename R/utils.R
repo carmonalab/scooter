@@ -927,14 +927,6 @@ combine_pvals <- function(list_pvals_n,
 
 scores_composite_pca <- function(scores,
                                  scoot_summary
-                                 # label = "all",
-                                 # invisible = c("var", "quali"),
-                                 # geom_var = c("arrow", "text"),
-                                 # col_var = "steelblue",
-                                 # alpha_var = 0.3,
-                                 # repel = TRUE,
-                                 # color_cluster_by = "none",
-                                 # add_ellipses = FALSE
 ) {
 
   cluster_by <- names(scores)[!names(scores) %in% "params"]
@@ -1071,7 +1063,11 @@ scores_composite_pca <- function(scores,
                             results[[c]][["plots"]][["L2"]],
                             results[[c]][["plots"]][["L3"]],
                             nrow = 2) +
-      patchwork::plot_layout(widths = 1)
+      patchwork::plot_layout(widths = 1) +
+      patchwork::plot_annotation(c,
+                                 theme = ggplot2::theme(plot.title = ggplot2::element_text(face = "bold",
+                                                                                           hjust = 0,
+                                                                                           size = 20)))
     print(results[[c]][["plots"]][["summary_plot"]])
   }
 
@@ -1134,4 +1130,78 @@ extend_matrix <- function(mat,
   extended_mat[common_rows, common_cols] <- mat[common_rows, common_cols]
 
   return(extended_mat)
+}
+
+
+# Convenience functions  ###############################################
+
+#' Save object list to disk, in parallel
+#'
+#' @param obj.list A list of Seurat objects
+#' @param dir File location
+#' @param ncores Number of CPU cores to use for parallelization
+#' @param progressbar Whether to show a progressbar or not
+#'
+#' @importFrom BiocParallel MulticoreParam bplapply
+#' @importFrom parallelly availableCores
+#' @return A list of Seurat objects saved to disk as separate .rds files
+#' @export save_objs
+#'
+#' @examples
+#' save_objs(obj.list, "./output/samples")
+
+save_objs <- function(obj.list,
+                      dir,
+                      ncores = parallelly::availableCores() - 2,
+                      progressbar = TRUE) {
+
+  BiocParallel::bplapply(
+    X = names(obj.list),
+    BPPARAM =  BiocParallel::MulticoreParam(workers = ncores,
+                                            progressbar = progressbar),
+    function(x) {
+      file_name <- file.path(dir, sprintf("%s.rds", x))
+      saveRDS(obj.list[[x]], file_name)
+    })
+}
+
+
+
+#' Read all .rds files in a directory and return list of Seurat objects, in parallel
+#'
+#' @param dir File location
+#' @param file.list A list of files (with full pathname)
+#' @param ncores Number of CPU cores to use for parallelization
+#' @param progressbar Whether to show a progressbar or not
+#'
+#' @importFrom BiocParallel MulticoreParam bplapply
+#' @importFrom stringr str_remove_all
+#' @importFrom parallelly availableCores
+#' @return A list of Seurat objects read into R
+#' @export read_objs
+#'
+#' @examples
+#' obj.list <- read_objs("./output/samples")
+
+read_objs <- function(dir = NULL,
+                      file.list = NULL,
+                      ncores = parallelly::availableCores() - 2,
+                      progressbar = TRUE) {
+
+  if (!is.null(dir) & is.null(file.list)) {
+    file_names <- list.files(dir)
+    file_paths <- file.path(dir, file_names)
+  } else if (is.null(dir) & !is.null(file.list)) {
+    file_paths <- file.list[endsWith(files, '.rds')]
+    file_names <- gsub("^.*/", "", file_paths)
+  }
+  obj.list <- BiocParallel::bplapply(
+    X = file_paths,
+    BPPARAM =  BiocParallel::MulticoreParam(workers = ncores,
+                                            progressbar = progressbar),
+    function(x) {
+      readRDS(file.path(x))
+    })
+  names(obj.list) <- stringr::str_remove_all(file_names, '.rds')
+  return(obj.list)
 }
