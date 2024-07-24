@@ -758,11 +758,6 @@ merge_scoot_objects <- function(scoot_object = NULL,
     }
   }
 
-  # set parallelization parameters
-  param <- set_parallel_params(ncores = ncores,
-                               bparam = bparam,
-                               progressbar = progressbar)
-
   # Join data from all scoot objects
 
   # Metadata
@@ -809,12 +804,11 @@ merge_scoot_objects <- function(scoot_object = NULL,
       unlist()
 
     if (all(is_df_check)) {
-      df <- BiocParallel::bplapply(X = layer_present,
-                                   BPPARAM = param,
-                                   function(x) {
-                                     scoot_object[[x]]@composition[[gb]] %>%
-                                       mutate(scoot_sample = x)
-                                   })
+      df <- lapply(X = layer_present,
+                   function(x) {
+                     scoot_object[[x]]@composition[[gb]] %>%
+                       mutate(scoot_sample = x)
+                   })
       df <- data.table::rbindlist(df, use.names=TRUE, fill=TRUE)
       comp_prop[[gb]] <- df
 
@@ -826,14 +820,13 @@ merge_scoot_objects <- function(scoot_object = NULL,
         unlist() %>%
         unique()
       for (i in gb_sublevel_unique_names) {
-        df <- BiocParallel::bplapply(X = layer_present,
-                                     BPPARAM = param,
-                                     function(x) {
-                                       if (!is.null(scoot_object[[x]]@composition[[gb]][[i]])) {
-                                         scoot_object[[x]]@composition[[gb]][[i]] %>%
-                                           mutate(scoot_sample = x)
-                                       }
-                                     })
+        df <- lapply(X = layer_present,
+                     function(x) {
+                       if (!is.null(scoot_object[[x]]@composition[[gb]][[i]])) {
+                         scoot_object[[x]]@composition[[gb]][[i]] %>%
+                           mutate(scoot_sample = x)
+                       }
+                     })
         df <- data.table::rbindlist(df, use.names=TRUE, fill=TRUE)
         comp_prop[[gb]][[i]] <- df
       }
@@ -858,11 +851,10 @@ merge_scoot_objects <- function(scoot_object = NULL,
                              ct %in% colnames(scoot_object[[x]]@aggregated_profile[[type]][[gb]]) }) %>%
         unlist()
       layer_ct_present <- names(scoot_object)[(names(scoot_object) %in% layer_present) & ct_present]
-      df <- BiocParallel::bplapply(X = layer_ct_present,
-                                   BPPARAM = param,
-                                   function(x) {
-                                     scoot_object[[x]]@aggregated_profile[[type]][[gb]][, ct]
-                                   })
+      df <- lapply(X = layer_ct_present,
+                   function(x) {
+                     scoot_object[[x]]@aggregated_profile[[type]][[gb]][, ct]
+                   })
       df <- do.call(cbind, df)
       df <- Matrix::Matrix(df, sparse = TRUE)
       colnames(df) <- layer_ct_present
@@ -891,14 +883,13 @@ merge_scoot_objects <- function(scoot_object = NULL,
 
     type <- "signatures"
 
-    df <- BiocParallel::bplapply(X = layer_present,
-                                 BPPARAM = param,
-                                 function(x) {
-                                   if (!is.null(scoot_object[[x]]@aggregated_profile[[type]][[gb]])) {
-                                     scoot_object[[x]]@aggregated_profile[[type]][[gb]] %>%
-                                       mutate(scoot_sample = x)
-                                   }
-                                 })
+    df <- lapply(X = layer_present,
+                 function(x) {
+                   if (!is.null(scoot_object[[x]]@aggregated_profile[[type]][[gb]])) {
+                     scoot_object[[x]]@aggregated_profile[[type]][[gb]] %>%
+                       mutate(scoot_sample = x)
+                   }
+                 })
     df <- data.table::rbindlist(df,
                                 use.names = TRUE,
                                 fill = TRUE)
@@ -946,7 +937,6 @@ merge_scoot_objects <- function(scoot_object = NULL,
 #' @importFrom parallelly availableCores
 #' @importFrom data.table rbindlist
 #' @importFrom dplyr mutate mutate_if filter %>% coalesce mutate_all full_join row_number
-#' @importFrom BiocParallel MulticoreParam bplapply
 #' @importFrom tibble rownames_to_column column_to_rownames remove_rownames
 #' @importFrom ggplot2 aes geom_point guides theme geom_col labs guide_legend annotate theme_bw ggtitle geom_ribbon element_text
 #' @importFrom MatrixGenerics rowVars rowMins

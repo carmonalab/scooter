@@ -9,9 +9,6 @@ merge_scoot_objects(
   group_by = NULL,
   metadata_vars = NULL,
   pseudobulk_matrix = "list",
-  ncores = parallelly::availableCores() - 2,
-  bparam = NULL,
-  progressbar = FALSE,
   verbose = FALSE
 )
 }
@@ -24,13 +21,13 @@ merge_scoot_objects(
 
 \item{pseudobulk_matrix}{Paramater to determine whther obtain the pseudobulk matrix as a single matrix (\code{"unique"}), or as one matrix for each cell type in the layer (\code{"list"})}
 
+\item{verbose}{Whether to show optional messages or not}
+
 \item{ncores}{The number of cores to use, by default, all available cores - 2.}
 
 \item{bparam}{A \code{BiocParallel::bpparam()} object that tells how to parallelize. If provided, it overrides the \code{ncores} parameter.}
 
 \item{progressbar}{Whether to show a progressbar or not}
-
-\item{verbose}{Whether to show optional messages or not}
 }
 \value{
 Merged scootObject
