@@ -1894,12 +1894,15 @@ composition_barplot <- function(scoot_object = NULL,
     facet_by_reformulate <- reformulate(facet_by)
   }
 
+  ylab <- "Relative abundance (%)"
+
   if (is.data.frame(comps)) {
     comp <- merge(comps, meta[, c(sample_col, facet_by), drop=FALSE], by = sample_col)
 
     p <- ggplot(comp, aes(x = scoot_sample, y = freq, fill = celltype)) +
       geom_bar(stat = "identity") +
-      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+      theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+      xlab("") + ylab(ylab)
 
     if (!is.null(facet_by)) {
 
@@ -1923,7 +1926,7 @@ composition_barplot <- function(scoot_object = NULL,
 
       p_list[["plot_list"]][[ct]] <- ggplot(comp, aes(x = scoot_sample, y = freq, fill = celltype)) +
         geom_bar(stat = "identity") +
-        ggtitle(ct) +
+        xlab("") + ylab(ylab) +
         theme(axis.text.x = element_text(angle = 45, hjust=1)) +
         ggtitle(ct)
 
@@ -2027,6 +2030,16 @@ composition_boxplot <- function(scoot_object = NULL,
 
   plot_var_gg <- sym(plot_var)
 
+  if (plot_var == "clr") {
+    ylab <- "Relative abundance (clr)"
+  }
+  if (plot_var == "freq") {
+    ylab <- "Relative abundance (%)"
+  }
+  if (plot_var == "freq") {
+    ylab <- "Cell counts"
+  }
+
   if (is.data.frame(comps)) {
     comp <- merge(comps, meta[, c(sample_col, group_by, facet_by), drop=FALSE], by = sample_col)
 
@@ -2036,6 +2049,8 @@ composition_boxplot <- function(scoot_object = NULL,
       p <- ggboxplot(comp,
                      x = "celltype",
                      y = plot_var,
+                     xlab = "",
+                     ylab = ylab,
                      outlier.shape = NA,
                      palette = palette,
                      facet.by = facet_by,
@@ -2045,6 +2060,8 @@ composition_boxplot <- function(scoot_object = NULL,
       p <- ggboxplot(comp,
                      x = "celltype",
                      y = plot_var,
+                     xlab = "",
+                     ylab = ylab,
                      color = group_by,
                      outlier.shape = NA,
                      palette = palette,
@@ -2083,6 +2100,8 @@ composition_boxplot <- function(scoot_object = NULL,
         p_list[["plot_list"]][[ct]] <- ggboxplot(comp,
                                                  x = "celltype",
                                                  y = plot_var,
+                                                 xlab = "",
+                                                 ylab = ylab,
                                                  outlier.shape = NA,
                                                  palette = palette,
                                                  facet.by = facet_by,
@@ -2092,6 +2111,8 @@ composition_boxplot <- function(scoot_object = NULL,
         p_list[["plot_list"]][[ct]] <- ggboxplot(comp,
                                                  x = "celltype",
                                                  y = plot_var,
+                                                 xlab = "",
+                                                 ylab = ylab,
                                                  color = group_by,
                                                  outlier.shape = NA,
                                                  palette = palette,

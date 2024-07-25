@@ -952,7 +952,7 @@ scores_composite_pca <- function(scores,
                                                             pointsize = 3,
                                                             invisible = c("var", "quali"),
                                                             geom = "point") +
-      ggtitle(paste("L1 - PCA based on low-res cell type composition\n Silhouette score:", mean_sil)) +
+      ggtitle(paste("L1 - PCA - low-res cell type composition\n Silhouette score:", mean_sil)) +
       coord_equal()
 
 
@@ -978,7 +978,7 @@ scores_composite_pca <- function(scores,
                                                             pointsize = 3,
                                                             invisible = c("var", "quali"),
                                                             geom = "point") +
-      ggtitle(paste("L2 - PCA based on hi-res cell type composition\nSilhouette score:", mean_sil)) +
+      ggtitle(paste("L2 - PCA - hi-res cell type composition\nSilhouette score:", mean_sil)) +
       coord_equal()
 
 
@@ -1007,7 +1007,7 @@ scores_composite_pca <- function(scores,
                                                             pointsize = 3,
                                                             invisible = c("var", "quali"),
                                                             geom = "point") +
-      ggtitle(paste("L3 - PCA based on signature expression per cell type\nSilhouette score:", mean_sil)) +
+      ggtitle(paste("L3 - PCA - signature expression per cell type\nSilhouette score:", mean_sil)) +
       coord_equal()
 
 
