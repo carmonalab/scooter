@@ -123,31 +123,6 @@ compositional_data <- function(data,
 
 # get_cluster_score helper functions ##############################################################################
 
-### Pre-process pseudobulk count data
-
-preproc_pseudobulk <- function(matrix,
-                               metadata,
-                               cluster_by,
-                               nvar_genes = 500,
-                               black_list = NULL) {
-
-  suppressMessages({
-    suppressWarnings({
-      matrix <- DESeq2.normalize(matrix = matrix,
-                                 metadata = metadata,
-                                 cluster_by = cluster_by,
-                                 nvar_genes = nvar_genes,
-                                 black_list = black_list)
-    })
-  })
-
-  return(matrix)
-}
-
-
-
-### Just a helper for preproc_pseudobulk, if additional pre-processing steps are needed
-
 #' @importFrom DESeq2 DESeqDataSetFromMatrix vst estimateSizeFactors
 #' @importFrom SummarizedExperiment assay
 
@@ -157,37 +132,34 @@ DESeq2.normalize <- function(matrix,
                              nvar_genes = 500,
                              black_list = NULL) {
 
-  # Get black list
-  if (is.null(black_list)) {
-    data(default_black_list, envir=environment())
-  }
-  black_list <- unlist(black_list)
+  suppressMessages({
+    suppressWarnings({
 
-  # Remove black listed genes from the matrix
-  matrix <- matrix[!row.names(matrix) %in% black_list,]
+      # Normalize pseudobulk data using DESeq2
+      # do formula for design with the cluster_by elements in order
+      dformula <-  stats::formula(paste("~", cluster_by))
+      matrix <- DESeq2::DESeqDataSetFromMatrix(countData = matrix,
+                                               colData = metadata,
+                                               design = dformula)
+      matrix <- DESeq2::estimateSizeFactors(matrix)
 
-  # Normalize pseudobulk data using DESeq2
-  # do formula for design with the cluster_by elements in order
-  dformula <-  stats::formula(paste("~", cluster_by))
-  data <- DESeq2::DESeqDataSetFromMatrix(countData = matrix,
-                                         colData = metadata,
-                                         design = dformula)
-  data <- DESeq2::estimateSizeFactors(data)
+      nsub <- min(1000, sum(rowMeans(BiocGenerics::counts(matrix, normalized=TRUE)) > 10 ))
 
-  nsub <- min(1000, sum(rowMeans(BiocGenerics::counts(data, normalized=TRUE)) > 10 ))
+      # transform counts using vst
+      matrix <- DESeq2::vst(matrix, blind = T, nsub = nsub)
+      matrix <- SummarizedExperiment::assay(matrix)
 
-  # transform counts using vst
-  data <- DESeq2::vst(data, blind = T, nsub = nsub)
-  data <- SummarizedExperiment::assay(data)
+      # get top variable genes
+      rv <- MatrixGenerics::rowVars(matrix)
+      select <- order(rv, decreasing=TRUE)[seq_len(min(nvar_genes, length(rv)))]
+      select <- row.names(matrix)[select]
 
-  # get top variable genes
-  rv <- MatrixGenerics::rowVars(data)
-  select <- order(rv, decreasing=TRUE)[seq_len(min(nvar_genes, length(rv)))]
-  select <- row.names(data)[select]
+      matrix <- matrix[select[select %in% row.names(matrix)],]
 
-  data <- data[select[select %in% row.names(data)],]
+    })
+  })
 
-  return(data)
+  return(matrix)
 }
 
 
@@ -899,28 +871,10 @@ plot_silhouette <- function(sil_scores,
                                          format.pval(sil_scores[["p_value"]],
                                                      digits = 3)), ""))) +
     ggplot2::labs(fill = "Groups") +
-    ggplot2::geom_ribbon(aes(x = 1:xend,
-                             ymin = ci[1],
-                             ymax = ci[2]),
-                         alpha = 0.15,
-                         inherit.aes = FALSE) +
-    ggplot2::annotate("segment",
-                      x = 1,
-                      xend = xend,
-                      y = ci[1],
-                      lty = 1,
-                      alpha = 0.15) +
-    ggplot2::annotate("segment",
-                      x = 1,
-                      xend = xend,
-                      y = ci[2],
-                      lty = 1,
-                      alpha = 0.15) +
-    ggplot2::annotate("segment",
-                      x = 1,
-                      xend = xend,
-                      y = m,
-                      lty = 2) +
+    ggplot2::annotate("ribbon", x = 1:xend, ymin = ci[1], ymax = ci[2], alpha = 0.15) +
+    ggplot2::annotate("segment", x = 1, xend = xend, y = ci[1], lty = 1, alpha = 0.15) +
+    ggplot2::annotate("segment", x = 1, xend = xend, y = ci[2], lty = 1, alpha = 0.15) +
+    ggplot2::annotate("segment", x = 1, xend = xend, y = m, lty = 2) +
     ggplot2::theme_bw()
 
   return(p)
