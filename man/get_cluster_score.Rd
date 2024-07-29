@@ -7,15 +7,16 @@
 get_cluster_score(
   scoot_object = NULL,
   cluster_by = NULL,
+  min_samples = 5,
   cluster_by_drop_na = TRUE,
   batching = NULL,
   scores = c("silhouette_isolated", "silhouette", "modularity"),
+  dist_method = "euclidean",
   modularity_k = 3,
   max_nc = 5,
   pam_nclusters = "auto",
   hdbscan_min_pts = 3,
-  dist_method = "euclidean",
-  hclust_method = "complete",
+  NbClust_method = "ward.D2",
   ntests = 100,
   seed = 22,
   pval_combine_method = "weighted_zmethod",
@@ -36,11 +37,15 @@ get_cluster_score(
 
 \item{cluster_by}{Vector indicating the variable for clustering, default is celltype (for the annotation) and sample}
 
+\item{min_samples}{Minimum number of samples to calculate scores (do not go lower than 5)}
+
 \item{cluster_by_drop_na}{Whether to keep (FALSE) or drop (TRUE) NAs present in cluster_by column.}
 
 \item{batching}{Vector indicating the variable for batching to allow calculating scores per batch, to account for batch effect}
 
 \item{scores}{scores to compute clustering of samples based on cell type prediction.}
+
+\item{dist_method}{Method to compute distance between celltypes, default is euclidean.}
 
 \item{modularity_k}{Number of k-nearest neighbors to use to build graph for the calculation of the modularity score}
 
@@ -48,9 +53,7 @@ get_cluster_score(
 
 \item{hdbscan_min_pts}{integer; Minimum size of clusters. See dbscan::hdbscan for details.}
 
-\item{dist_method}{Method to compute distance between celltypes, default is euclidean.}
-
-\item{hclust_method}{Hierarchical clustering method for hclust. Options are: "single", "complete", "average" (= UPGMA), "mcquitty" (= WPGMA), "median" (= WPGMC) or "centroid" (= UPGMC). (See hclust package for details)}
+\item{NbClust_method}{Hierarchical clustering method for NbClust::NbClust.}
 
 \item{ntests}{Number of shuffling events to calculate p-value for scores}
 

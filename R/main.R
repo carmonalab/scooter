@@ -898,6 +898,7 @@ merge_scoot_objects <- function(scoot_object = NULL,
 #'
 #' @param scoot_object A scoot class object obtained with \link{scoot_object} or pseudobulk raw count matrix (\code{scootObject@aggregated_profile$pseudobulk$layer_1})
 #' @param cluster_by Vector indicating the variable for clustering, default is celltype (for the annotation) and sample
+#' @param min_samples Minimum number of samples to calculate scores (do not go lower than 5)
 #' @param cluster_by_drop_na Whether to keep (FALSE) or drop (TRUE) NAs present in cluster_by column.
 #' @param batching Vector indicating the variable for batching to allow calculating scores per batch, to account for batch effect
 #' @param scores scores to compute clustering of samples based on cell type prediction.
@@ -941,6 +942,7 @@ merge_scoot_objects <- function(scoot_object = NULL,
 
 get_cluster_score <- function(scoot_object = NULL,
                               cluster_by = NULL,
+                              min_samples = 5,
                               cluster_by_drop_na = TRUE,
                               batching = NULL,
                               scores = c("silhouette_isolated", "silhouette", "modularity"),
@@ -1036,6 +1038,7 @@ get_cluster_score <- function(scoot_object = NULL,
     for (layer in comp_layers) {
       if (inherits(scoot_object@composition[[layer]], "data.frame")) {
         mat <- scoot_object@composition[[layer]][, c("celltype", "clr", "scoot_sample"), with = FALSE]
+
         if (cluster_by_drop_na) {
           mat <- mat %>% filter(scoot_sample %in% scoot_object@metadata[["scoot_sample"]])
         }
@@ -1047,332 +1050,72 @@ get_cluster_score <- function(scoot_object = NULL,
           scale(center = TRUE,
                 scale = FALSE)
 
-        if (is.null(batching))  {
-          cluster_labels <- scoot_object@metadata %>%
-            dplyr::filter(scoot_sample %in% colnames(mat)) %>%
-            .[[cluster_col]]
-
-          results[[cluster_col]][[type]][[layer]] <-
-            get_scores(matrix = mat,
-                       cluster_labels = cluster_labels,
-                       scores = scores,
-                       dist_method = dist_method,
-                       modularity_k = modularity_k,
-                       max_nc = max_nc,
-                       pam_nclusters = pam_nclusters,
-                       hdbscan_min_pts = hdbscan_min_pts,
-                       NbClust_method = NbClust_method,
-                       ntests = ntests,
-                       seed = seed,
-                       title = paste(cluster_col,
-                                     stringr::str_to_title(type),
-                                     layer),
-                       invisible = pca_comps_labs_invisible)
-        }
-
-        if (!is.null(batching))  {
-          for (b_var in batching) {
-            if (b_var != cluster_col) {
-              b_var_res_summary <- list()
-              for (b in unique(scoot_object@metadata[[b_var]])) {
-                meta <- scoot_object@metadata %>%
-                  dplyr::filter(get(b_var) == b) %>%
-                  dplyr::filter(scoot_sample %in% colnames(mat))
-
-                cluster_labels <- meta[[cluster_col]]
-
-                m <- mat[ , colnames(mat) %in% as.character(meta[["scoot_sample"]])] %>%
-                  scale(center = TRUE,
-                        scale = FALSE)
-
-                results[[cluster_col]][[type]][[layer]][[b_var]][[b]] <-
-                  get_scores(matrix = m,
-                             cluster_labels = cluster_labels,
-                             scores = scores,
-                             dist_method = dist_method,
-                             modularity_k = modularity_k,
-                             max_nc = max_nc,
-                             pam_nclusters = pam_nclusters,
-                             hdbscan_min_pts = hdbscan_min_pts,
-                             NbClust_method = NbClust_method,
-                             ntests = ntests,
-                             seed = seed,
-                             title = paste(cluster_col,
-                                           stringr::str_to_title(type),
-                                           layer),
-                             invisible = pca_comps_labs_invisible)
-                for (score in scores) {
-                  b_var_res_summary[[score]][["summary"]] <- c(
-                    b_var_res_summary[[score]][["summary"]],
-                    results[[cluster_col]][[type]][[layer]][[b_var]][[b]][["scores"]][[score]][["summary"]])
-                  b_var_res_summary[[score]][["n"]] <- c(
-                    b_var_res_summary[[score]][["n"]],
-                    results[[cluster_col]][[type]][[layer]][[b_var]][[b]][["scores"]][[score]][["n"]])
-                  b_var_res_summary[[score]][["p_value"]] <- c(
-                    b_var_res_summary[[score]][["p_value"]],
-                    results[[cluster_col]][[type]][[layer]][[b_var]][[b]][["scores"]][[score]][["p_value"]])
-                }
-              }
-
-              for (score in scores) {
-                b_var_res_summary[[score]][["summary"]] <-
-                  mean(b_var_res_summary[[score]][["summary"]])
-
-                # Requires the number of samples per batch, so run before summing n
-                p_values_not_na <- stats::na.omit(b_var_res_summary[[score]][["p_value"]])
-                p_values_not_na_len <- length(p_values_not_na)
-                if (p_values_not_na_len > 1){
-                  b_var_res_summary[[score]] <- combine_pvals(b_var_res_summary[[score]],
-                                                              pval_combine_method)
-                } else if (p_values_not_na_len == 1) {
-                  b_var_res_summary[[score]][["p_value"]] <- p_values_not_na
-                } else {
-                  b_var_res_summary[[score]][["p_value"]] <- NULL
-                  b_var_res_summary[[score]][["summary"]] <- NULL
-                }
-
-                b_var_res_summary[[score]][["n"]] <-
-                  sum(b_var_res_summary[[score]][["n"]])
-              }
-              results[[cluster_col]][[type]][[layer]][[b_var]][["all"]][["scores"]] <- b_var_res_summary
-            }
-          }
-        }
-
-      } else if (is.list(scoot_object@composition[[layer]])) {
-        results[[cluster_col]][[type]][[layer]] <-
-          BiocParallel::bplapply(
-            X = names(scoot_object@composition[[layer]]),
-            BPPARAM = param,
-            function(i){
-              mat <- scoot_object@composition[[layer]][[i]][, c("celltype", "clr", "scoot_sample"), with = F]
-              if (cluster_by_drop_na) {
-                mat <- mat %>% filter(scoot_sample %in% scoot_object@metadata[["scoot_sample"]])
-              }
-              mat <- mat %>%
-                tidyr::pivot_wider(names_from = scoot_sample,
-                                   values_from = clr) %>%
-                tibble::column_to_rownames(var = "celltype")
-
-              mat <- scale(mat, center = TRUE,
-                           scale = FALSE)
-
-              if (is.null(batching))  {
-                cluster_labels <- scoot_object@metadata %>%
-                  dplyr::filter(scoot_sample %in% colnames(mat)) %>%
-                  .[[cluster_col]]
-
-                if (nrow(mat) > 1) {
-                  res <- get_scores(matrix = mat,
-                                    cluster_labels = cluster_labels,
-                                    scores = scores,
-                                    dist_method = dist_method,
-                                    modularity_k = modularity_k,
-                                    max_nc = max_nc,
-                                    pam_nclusters = pam_nclusters,
-                                    hdbscan_min_pts = hdbscan_min_pts,
-                                    NbClust_method = NbClust_method,
-                                    ntests = ntests,
-                                    seed = seed,
-                                    title = paste(cluster_col,
-                                                  stringr::str_to_title(type),
-                                                  layer,
-                                                  i),
-                                    invisible = pca_comps_labs_invisible)
-                  return(res)
-                } else {
-                  return(NULL)
-                }
-              }
-
-              if (!is.null(batching)) {
-                res <- list()
-                for (b_var in batching) {
-                  if (b_var != cluster_col) {
-                    b_var_res_summary <- list()
-                    for (b in unique(scoot_object@metadata[[b_var]])) {
-                      meta <- scoot_object@metadata %>%
-                        dplyr::filter(get(b_var) == b) %>%
-                        dplyr::filter(scoot_sample %in% colnames(mat))
-
-                      cluster_labels <- meta[[cluster_col]]
-
-                      m <- mat[ , colnames(mat) %in% as.character(meta[["scoot_sample"]])] %>%
-                        scale(center = TRUE, scale = FALSE)
-
-                      if (nrow(m) > 1) {
-                        res[[b_var]][[b]] <-
-                          get_scores(matrix = m,
-                                     cluster_labels = cluster_labels,
-                                     scores = scores,
-                                     dist_method = dist_method,
-                                     modularity_k = modularity_k,
-                                     max_nc = max_nc,
-                                     pam_nclusters = pam_nclusters,
-                                     hdbscan_min_pts = hdbscan_min_pts,
-                                     NbClust_method = NbClust_method,
-                                     ntests = ntests,
-                                     seed = seed,
-                                     title = paste(cluster_col,
-                                                   stringr::str_to_title(type),
-                                                   layer,
-                                                   i),
-                                     invisible = pca_comps_labs_invisible)
-                      }
-
-                      for (score in scores) {
-                        b_var_res_summary[[score]][["summary"]] <- c(
-                          b_var_res_summary[[score]][["summary"]],
-                          res[[b_var]][[b]][["scores"]][[score]][["summary"]])
-                        b_var_res_summary[[score]][["n"]] <- c(
-                          b_var_res_summary[[score]][["n"]],
-                          res[[b_var]][[b]][["scores"]][[score]][["n"]])
-                        b_var_res_summary[[score]][["p_value"]] <- c(
-                          b_var_res_summary[[score]][["p_value"]],
-                          res[[b_var]][[b]][["scores"]][[score]][["p_value"]])
-                      }
-                    }
-
-                    for (score in scores) {
-                      b_var_res_summary[[score]][["summary"]] <-
-                        mean(b_var_res_summary[[score]][["summary"]])
-
-                      # Requires the number of samples per batch, so run before summing n
-                      p_values_not_na <- stats::na.omit(b_var_res_summary[[score]][["p_value"]])
-                      p_values_not_na_len <- length(p_values_not_na)
-                      if (p_values_not_na_len > 1) {
-                        b_var_res_summary[[score]] <- combine_pvals(b_var_res_summary[[score]],
-                                                                    pval_combine_method)
-                      } else if (p_values_not_na_len == 1) {
-                        b_var_res_summary[[score]][["p_value"]] <- p_values_not_na
-                      } else {
-                        b_var_res_summary[[score]][["p_value"]] <- NULL
-                        b_var_res_summary[[score]][["summary"]] <- NULL
-                      }
-
-                      b_var_res_summary[[score]][["n"]] <-
-                        sum(b_var_res_summary[[score]][["n"]])
-                    }
-                    res[[b_var]][["all"]][["scores"]] <- b_var_res_summary
-                  }
-                }
-                if(length(res) == 0) {
-                  return(NULL)
-                } else {
-                  return(res)
-                }
-              }
-            }
-          )
-        names(results[[cluster_col]][[type]][[layer]]) <-
-          names(scoot_object@composition[[layer]])
-      }
-    }
-
-
-    ## Process pseudobulk ###############################################
-    message("\nProcessing Pseudobulks\n")
-
-    type <- "pseudobulk"
-
-    pb_layers <- names(scoot_object@aggregated_profile[[type]])
-
-    for (layer in pb_layers) {
-      results[[cluster_col]][[type]][[layer]] <- BiocParallel::bplapply(
-        X = names(scoot_object@aggregated_profile[[type]][[layer]]),
-        BPPARAM = param,
-        function(i){
-          mat <- scoot_object@aggregated_profile[[type]][[layer]][[i]]
-          meta <- scoot_object@metadata %>%
-            dplyr::filter(scoot_sample %in% colnames(mat))
-          cluster_labels <- meta[[cluster_col]]
-          if (cluster_by_drop_na) {
-            mat <- mat[, colnames(mat) %in% as.character(meta[["scoot_sample"]])]
-          }
+        if (ncol(mat) >= min_samples) {
 
           if (is.null(batching))  {
-            if (length(unique(cluster_labels)) > 1) {
-              mat <- preproc_pseudobulk(matrix = mat,
-                                        metadata = meta,
-                                        cluster_by = cluster_col,
-                                        nvar_genes = nvar_genes,
-                                        black_list = black_list)
+            cluster_labels <- scoot_object@metadata %>%
+              dplyr::filter(scoot_sample %in% colnames(mat)) %>%
+              .[[cluster_col]]
 
-              res <- get_scores(matrix = mat,
-                                cluster_labels = cluster_labels,
-                                scores = scores,
-                                dist_method = dist_method,
-                                modularity_k = modularity_k,
-                                max_nc = max_nc,
-                                pam_nclusters = pam_nclusters,
-                                hdbscan_min_pts = hdbscan_min_pts,
-                                NbClust_method = NbClust_method,
-                                ntests = ntests,
-                                seed = seed,
-                                title = paste(cluster_col,
-                                              stringr::str_to_title(type),
-                                              layer,
-                                              i),
-                                invisible = pca_pb_labs_invisible,
-                                select_var = list(cos2 = pca_n_hvg))
-              return(res)
-            } else {
-              return(NULL)
-            }
+            results[[cluster_col]][[type]][[layer]] <-
+              get_scores(matrix = mat,
+                         cluster_labels = cluster_labels,
+                         scores = scores,
+                         dist_method = dist_method,
+                         modularity_k = modularity_k,
+                         max_nc = max_nc,
+                         pam_nclusters = pam_nclusters,
+                         hdbscan_min_pts = hdbscan_min_pts,
+                         NbClust_method = NbClust_method,
+                         ntests = ntests,
+                         seed = seed,
+                         title = paste(cluster_col,
+                                       stringr::str_to_title(type),
+                                       layer),
+                         invisible = pca_comps_labs_invisible)
           }
 
-          if (!is.null(batching)) {
-            res <- list()
+          if (!is.null(batching))  {
             for (b_var in batching) {
               if (b_var != cluster_col) {
                 b_var_res_summary <- list()
                 for (b in unique(scoot_object@metadata[[b_var]])) {
-                  met <- scoot_object@metadata %>%
+                  meta <- scoot_object@metadata %>%
                     dplyr::filter(get(b_var) == b) %>%
                     dplyr::filter(scoot_sample %in% colnames(mat))
 
-                  cluster_labels <- met[[cluster_col]]
+                  cluster_labels <- meta[[cluster_col]]
 
-                  m <- mat[ , colnames(mat) %in% met[["scoot_sample"]]]
+                  m <- mat[ , colnames(mat) %in% as.character(meta[["scoot_sample"]])] %>%
+                    scale(center = TRUE,
+                          scale = FALSE)
 
-                  if (length(unique(cluster_labels)) > 1) {
-                    m <- preproc_pseudobulk(matrix = m,
-                                            metadata = met,
-                                            cluster_by = cluster_col,
-                                            nvar_genes = nvar_genes,
-                                            black_list = black_list)
-
-                    if (nrow(m) > 1) {
-                      res[[b_var]][[b]] <-
-                        get_scores(matrix = m,
-                                   cluster_labels = cluster_labels,
-                                   scores = scores,
-                                   dist_method = dist_method,
-                                   modularity_k = modularity_k,
-                                   max_nc = max_nc,
-                                   pam_nclusters = pam_nclusters,
-                                   hdbscan_min_pts = hdbscan_min_pts,
-                                   NbClust_method = NbClust_method,
-                                   ntests = ntests,
-                                   seed = seed,
-                                   title = paste(cluster_col,
-                                                 stringr::str_to_title(type),
-                                                 layer,
-                                                 i),
-                                   invisible = pca_pb_labs_invisible,
-                                   select_var = list(cos2 = pca_n_hvg))
-                    }
-                  }
+                  results[[cluster_col]][[type]][[layer]][[b_var]][[b]] <-
+                    get_scores(matrix = m,
+                               cluster_labels = cluster_labels,
+                               scores = scores,
+                               dist_method = dist_method,
+                               modularity_k = modularity_k,
+                               max_nc = max_nc,
+                               pam_nclusters = pam_nclusters,
+                               hdbscan_min_pts = hdbscan_min_pts,
+                               NbClust_method = NbClust_method,
+                               ntests = ntests,
+                               seed = seed,
+                               title = paste(cluster_col,
+                                             stringr::str_to_title(type),
+                                             layer),
+                               invisible = pca_comps_labs_invisible)
                   for (score in scores) {
                     b_var_res_summary[[score]][["summary"]] <- c(
                       b_var_res_summary[[score]][["summary"]],
-                      res[[b_var]][[b]][["scores"]][[score]][["summary"]])
+                      results[[cluster_col]][[type]][[layer]][[b_var]][[b]][["scores"]][[score]][["summary"]])
                     b_var_res_summary[[score]][["n"]] <- c(
                       b_var_res_summary[[score]][["n"]],
-                      res[[b_var]][[b]][["scores"]][[score]][["n"]])
+                      results[[cluster_col]][[type]][[layer]][[b_var]][[b]][["scores"]][[score]][["n"]])
                     b_var_res_summary[[score]][["p_value"]] <- c(
                       b_var_res_summary[[score]][["p_value"]],
-                      res[[b_var]][[b]][["scores"]][[score]][["p_value"]])
+                      results[[cluster_col]][[type]][[layer]][[b_var]][[b]][["scores"]][[score]][["p_value"]])
                   }
                 }
 
@@ -1396,76 +1139,210 @@ get_cluster_score <- function(scoot_object = NULL,
                   b_var_res_summary[[score]][["n"]] <-
                     sum(b_var_res_summary[[score]][["n"]])
                 }
-                res[[b_var]][["all"]][["scores"]] <- b_var_res_summary
+                results[[cluster_col]][[type]][[layer]][[b_var]][["all"]][["scores"]] <- b_var_res_summary
               }
             }
-            if(length(res) == 0) {
-              return(NULL)
-            } else {
-              return(res)
-            }
           }
+        } else {
+          results[[cluster_col]][[type]][[layer]] <- NULL
         }
-      )
-      names(results[[cluster_col]][[type]][[layer]]) <-
-        names(scoot_object@aggregated_profile[[type]][[layer]])
+
+      } else if (is.list(scoot_object@composition[[layer]])) {
+        results[[cluster_col]][[type]][[layer]] <-
+          BiocParallel::bplapply(
+            X = names(scoot_object@composition[[layer]]),
+            BPPARAM = param,
+            function(i) {
+              mat <- scoot_object@composition[[layer]][[i]][, c("celltype", "clr", "scoot_sample"), with = F]
+
+              if (cluster_by_drop_na) {
+                mat <- mat %>% filter(scoot_sample %in% scoot_object@metadata[["scoot_sample"]])
+              }
+              mat <- mat %>%
+                tidyr::pivot_wider(names_from = scoot_sample,
+                                   values_from = clr) %>%
+                tibble::column_to_rownames(var = "celltype") %>%
+                scale(center = TRUE,
+                      scale = FALSE)
+
+              if (ncol(mat) >= min_samples) {
+
+                if (is.null(batching))  {
+                  cluster_labels <- scoot_object@metadata %>%
+                    dplyr::filter(scoot_sample %in% colnames(mat)) %>%
+                    .[[cluster_col]]
+
+                  if (nrow(mat) > 1) {
+                    res <- get_scores(matrix = mat,
+                                      cluster_labels = cluster_labels,
+                                      scores = scores,
+                                      dist_method = dist_method,
+                                      modularity_k = modularity_k,
+                                      max_nc = max_nc,
+                                      pam_nclusters = pam_nclusters,
+                                      hdbscan_min_pts = hdbscan_min_pts,
+                                      NbClust_method = NbClust_method,
+                                      ntests = ntests,
+                                      seed = seed,
+                                      title = paste(cluster_col,
+                                                    stringr::str_to_title(type),
+                                                    layer,
+                                                    i),
+                                      invisible = pca_comps_labs_invisible)
+                    return(res)
+                  } else {
+                    return(NULL)
+                  }
+                }
+
+                if (!is.null(batching)) {
+                  res <- list()
+                  for (b_var in batching) {
+                    if (b_var != cluster_col) {
+                      b_var_res_summary <- list()
+                      for (b in unique(scoot_object@metadata[[b_var]])) {
+                        meta <- scoot_object@metadata %>%
+                          dplyr::filter(get(b_var) == b) %>%
+                          dplyr::filter(scoot_sample %in% colnames(mat))
+
+                        cluster_labels <- meta[[cluster_col]]
+
+                        m <- mat[ , colnames(mat) %in% as.character(meta[["scoot_sample"]])] %>%
+                          scale(center = TRUE, scale = FALSE)
+
+                        if (nrow(m) > 1) {
+                          res[[b_var]][[b]] <-
+                            get_scores(matrix = m,
+                                       cluster_labels = cluster_labels,
+                                       scores = scores,
+                                       dist_method = dist_method,
+                                       modularity_k = modularity_k,
+                                       max_nc = max_nc,
+                                       pam_nclusters = pam_nclusters,
+                                       hdbscan_min_pts = hdbscan_min_pts,
+                                       NbClust_method = NbClust_method,
+                                       ntests = ntests,
+                                       seed = seed,
+                                       title = paste(cluster_col,
+                                                     stringr::str_to_title(type),
+                                                     layer,
+                                                     i),
+                                       invisible = pca_comps_labs_invisible)
+                        }
+
+                        for (score in scores) {
+                          b_var_res_summary[[score]][["summary"]] <- c(
+                            b_var_res_summary[[score]][["summary"]],
+                            res[[b_var]][[b]][["scores"]][[score]][["summary"]])
+                          b_var_res_summary[[score]][["n"]] <- c(
+                            b_var_res_summary[[score]][["n"]],
+                            res[[b_var]][[b]][["scores"]][[score]][["n"]])
+                          b_var_res_summary[[score]][["p_value"]] <- c(
+                            b_var_res_summary[[score]][["p_value"]],
+                            res[[b_var]][[b]][["scores"]][[score]][["p_value"]])
+                        }
+                      }
+
+                      for (score in scores) {
+                        b_var_res_summary[[score]][["summary"]] <-
+                          mean(b_var_res_summary[[score]][["summary"]])
+
+                        # Requires the number of samples per batch, so run before summing n
+                        p_values_not_na <- stats::na.omit(b_var_res_summary[[score]][["p_value"]])
+                        p_values_not_na_len <- length(p_values_not_na)
+                        if (p_values_not_na_len > 1) {
+                          b_var_res_summary[[score]] <- combine_pvals(b_var_res_summary[[score]],
+                                                                      pval_combine_method)
+                        } else if (p_values_not_na_len == 1) {
+                          b_var_res_summary[[score]][["p_value"]] <- p_values_not_na
+                        } else {
+                          b_var_res_summary[[score]][["p_value"]] <- NULL
+                          b_var_res_summary[[score]][["summary"]] <- NULL
+                        }
+
+                        b_var_res_summary[[score]][["n"]] <-
+                          sum(b_var_res_summary[[score]][["n"]])
+                      }
+                      res[[b_var]][["all"]][["scores"]] <- b_var_res_summary
+                    }
+                  }
+                  if(length(res) == 0) {
+                    return(NULL)
+                  } else {
+                    return(res)
+                  }
+                }
+              } else {
+                return(NULL)
+              }
+            }
+          )
+        names(results[[cluster_col]][[type]][[layer]]) <-
+          names(scoot_object@composition[[layer]])
+      }
     }
 
 
-    ## Process signatures ###############################################
-    message("\nProcessing Signatures\n")
+    ## Process pseudobulk ###############################################
+    message("\nProcessing Pseudobulks\n")
 
-    type <- "signatures"
+    type <- "pseudobulk"
 
-    comp_layers <- names(scoot_object@aggregated_profile[[type]])
+    pb_layers <- names(scoot_object@aggregated_profile[[type]])
 
-    if (!is.null(comp_layers)) {
-      for (layer in comp_layers) {
-        cols <- colnames(scoot_object@aggregated_profile[[type]][[layer]])
-        signatures <- cols[! cols %in% c("celltype", "scoot_sample")]
+    for (layer in pb_layers) {
+      results[[cluster_col]][[type]][[layer]] <- BiocParallel::bplapply(
+        X = names(scoot_object@aggregated_profile[[type]][[layer]]),
+        BPPARAM = param,
+        function(i) {
+          mat <- as.matrix(scoot_object@aggregated_profile[[type]][[layer]][[i]])
 
-        results[[cluster_col]][[type]][[layer]] <- BiocParallel::bplapply(
-          X = signatures,
-          BPPARAM = param,
-          function(i){
-            mat <- scoot_object@aggregated_profile[[type]][[layer]][, c("celltype", i, "scoot_sample"), with = FALSE]
-            if (cluster_by_drop_na) {
-              mat <- mat %>% filter(scoot_sample %in% scoot_object@metadata[["scoot_sample"]])
+          if (ncol(mat) >= min_samples) {
+            # Get black list
+            if (is.null(black_list)) {
+              data(default_black_list)
             }
-            mat <- mat %>%
-              tidyr::pivot_wider(names_from = scoot_sample, values_from = i) %>%
-              tibble::column_to_rownames(var = "celltype") %>%
-              replace(is.na(.), 0)
+            black_list <- unlist(black.list)
+
+            # Remove black listed genes from the matrix
+            mat <- mat[!row.names(mat) %in% black_list,]
+
+            meta <- scoot_object@metadata %>%
+              dplyr::filter(scoot_sample %in% colnames(mat))
+            cluster_labels <- meta[[cluster_col]]
+            if (cluster_by_drop_na) {
+              mat <- mat[, colnames(mat) %in% as.character(meta[["scoot_sample"]])]
+            }
 
             if (is.null(batching))  {
-              mat <- scale(mat,
-                           center = TRUE,
-                           scale = TRUE)
+              if (length(unique(cluster_labels)) > 1) {
+                mat <- DESeq2.normalize(matrix = mat,
+                                          metadata = meta,
+                                          cluster_by = cluster_col,
+                                          nvar_genes = nvar_genes,
+                                          black_list = black_list)
 
-              # Drop columns containing NAN, caused by scaling zero variance columns
-              mat <- mat[ , colSums(is.nan(mat)) == 0]
-
-              cluster_labels <- scoot_object@metadata %>%
-                filter(scoot_sample %in% colnames(mat)) %>%
-                .[[cluster_col]]
-
-              res <- get_scores(matrix = mat,
-                                cluster_labels = cluster_labels,
-                                scores = scores,
-                                dist_method = dist_method,
-                                modularity_k = modularity_k,
-                                max_nc = max_nc,
-                                pam_nclusters = pam_nclusters,
-                                hdbscan_min_pts = hdbscan_min_pts,
-                                NbClust_method = NbClust_method,
-                                ntests = ntests,
-                                seed = seed,
-                                title = paste(cluster_col,
-                                              stringr::str_to_title(type),
-                                              layer,
-                                              i),
-                                invisible = pca_sig_labs_invisible)
-              return(res)
+                res <- get_scores(matrix = mat,
+                                  cluster_labels = cluster_labels,
+                                  scores = scores,
+                                  dist_method = dist_method,
+                                  modularity_k = modularity_k,
+                                  max_nc = max_nc,
+                                  pam_nclusters = pam_nclusters,
+                                  hdbscan_min_pts = hdbscan_min_pts,
+                                  NbClust_method = NbClust_method,
+                                  ntests = ntests,
+                                  seed = seed,
+                                  title = paste(cluster_col,
+                                                stringr::str_to_title(type),
+                                                layer,
+                                                i),
+                                  invisible = pca_pb_labs_invisible,
+                                  select_var = list(cos2 = pca_n_hvg))
+                return(res)
+              } else {
+                return(NULL)
+              }
             }
 
             if (!is.null(batching)) {
@@ -1474,36 +1351,42 @@ get_cluster_score <- function(scoot_object = NULL,
                 if (b_var != cluster_col) {
                   b_var_res_summary <- list()
                   for (b in unique(scoot_object@metadata[[b_var]])) {
-                    meta <- scoot_object@metadata %>%
+                    met <- scoot_object@metadata %>%
                       dplyr::filter(get(b_var) == b) %>%
                       dplyr::filter(scoot_sample %in% colnames(mat))
 
-                    cluster_labels <- meta[[cluster_col]]
+                    cluster_labels <- met[[cluster_col]]
 
-                    m <- mat[ , colnames(mat) %in% as.character(meta[["scoot_sample"]])] %>%
-                      scale(center = TRUE,
-                            scale = TRUE)
+                    m <- mat[ , colnames(mat) %in% met[["scoot_sample"]]]
 
-                    # Drop columns containing NAN, caused by scaling zero variance columns
-                    m <- m[ , colSums(is.nan(m)) == 0]
+                    if (length(unique(cluster_labels)) > 1) {
+                      m <- DESeq2.normalize(matrix = m,
+                                              metadata = met,
+                                              cluster_by = cluster_col,
+                                              nvar_genes = nvar_genes,
+                                              black_list = black_list)
 
-                    res[[b_var]][[b]] <-
-                      get_scores(matrix = m,
-                                 cluster_labels = cluster_labels,
-                                 scores = scores,
-                                 dist_method = dist_method,
-                                 modularity_k = modularity_k,
-                                 max_nc = max_nc,
-                                 pam_nclusters = pam_nclusters,
-                                 hdbscan_min_pts = hdbscan_min_pts,
-                                 NbClust_method = NbClust_method,
-                                 ntests = ntests,
-                                 seed = seed,
-                                 title = paste(cluster_col,
-                                               stringr::str_to_title(type),
-                                               layer,
-                                               i),
-                                 invisible = pca_sig_labs_invisible)
+                      if (nrow(m) > 1) {
+                        res[[b_var]][[b]] <-
+                          get_scores(matrix = m,
+                                     cluster_labels = cluster_labels,
+                                     scores = scores,
+                                     dist_method = dist_method,
+                                     modularity_k = modularity_k,
+                                     max_nc = max_nc,
+                                     pam_nclusters = pam_nclusters,
+                                     hdbscan_min_pts = hdbscan_min_pts,
+                                     NbClust_method = NbClust_method,
+                                     ntests = ntests,
+                                     seed = seed,
+                                     title = paste(cluster_col,
+                                                   stringr::str_to_title(type),
+                                                   layer,
+                                                   i),
+                                     invisible = pca_pb_labs_invisible,
+                                     select_var = list(cos2 = pca_n_hvg))
+                      }
+                    }
                     for (score in scores) {
                       b_var_res_summary[[score]][["summary"]] <- c(
                         b_var_res_summary[[score]][["summary"]],
@@ -1545,6 +1428,157 @@ get_cluster_score <- function(scoot_object = NULL,
               } else {
                 return(res)
               }
+            }
+          } else {
+            return(NULL)
+          }
+        }
+      )
+      names(results[[cluster_col]][[type]][[layer]]) <-
+        names(scoot_object@aggregated_profile[[type]][[layer]])
+    }
+
+
+    ## Process signatures ###############################################
+    message("\nProcessing Signatures\n")
+
+    type <- "signatures"
+
+    comp_layers <- names(scoot_object@aggregated_profile[[type]])
+
+    if (!is.null(comp_layers)) {
+      for (layer in comp_layers) {
+        cols <- colnames(scoot_object@aggregated_profile[[type]][[layer]])
+        signatures <- cols[!cols %in% c("celltype", "scoot_sample")]
+
+        results[[cluster_col]][[type]][[layer]] <- BiocParallel::bplapply(
+          X = signatures,
+          BPPARAM = param,
+          function(i) {
+            mat <- scoot_object@aggregated_profile[[type]][[layer]][, c("celltype", i, "scoot_sample"), with = FALSE]
+
+            if (cluster_by_drop_na) {
+              mat <- mat %>% filter(scoot_sample %in% scoot_object@metadata[["scoot_sample"]])
+            }
+            mat <- mat %>%
+              tidyr::pivot_wider(names_from = scoot_sample, values_from = i) %>%
+              tibble::column_to_rownames(var = "celltype") %>%
+              replace(is.na(.), 0)
+
+            if (ncol(mat) >= min_samples) {
+              if (is.null(batching))  {
+                mat <- scale(mat,
+                             center = TRUE,
+                             scale = TRUE)
+
+                # Drop columns containing NAN, caused by scaling zero variance columns
+                mat <- mat[ , colSums(is.nan(mat)) == 0]
+
+                cluster_labels <- scoot_object@metadata %>%
+                  filter(scoot_sample %in% colnames(mat)) %>%
+                  .[[cluster_col]]
+
+                res <- get_scores(matrix = mat,
+                                  cluster_labels = cluster_labels,
+                                  scores = scores,
+                                  dist_method = dist_method,
+                                  modularity_k = modularity_k,
+                                  max_nc = max_nc,
+                                  pam_nclusters = pam_nclusters,
+                                  hdbscan_min_pts = hdbscan_min_pts,
+                                  NbClust_method = NbClust_method,
+                                  ntests = ntests,
+                                  seed = seed,
+                                  title = paste(cluster_col,
+                                                stringr::str_to_title(type),
+                                                layer,
+                                                i),
+                                  invisible = pca_sig_labs_invisible)
+                return(res)
+              }
+
+              if (!is.null(batching)) {
+                res <- list()
+                for (b_var in batching) {
+                  if (b_var != cluster_col) {
+                    b_var_res_summary <- list()
+                    for (b in unique(scoot_object@metadata[[b_var]])) {
+                      meta <- scoot_object@metadata %>%
+                        dplyr::filter(get(b_var) == b) %>%
+                        dplyr::filter(scoot_sample %in% colnames(mat))
+
+                      cluster_labels <- meta[[cluster_col]]
+
+                      m <- mat[ , colnames(mat) %in% as.character(meta[["scoot_sample"]])] %>%
+                        scale(center = TRUE,
+                              scale = TRUE)
+
+                      # Drop columns containing NAN, caused by scaling zero variance columns
+                      m <- m[ , colSums(is.nan(m)) == 0]
+
+                      if (ncol(mat) >= min_samples) {
+                        res[[b_var]][[b]] <-
+                          get_scores(matrix = m,
+                                     cluster_labels = cluster_labels,
+                                     scores = scores,
+                                     dist_method = dist_method,
+                                     modularity_k = modularity_k,
+                                     max_nc = max_nc,
+                                     pam_nclusters = pam_nclusters,
+                                     hdbscan_min_pts = hdbscan_min_pts,
+                                     NbClust_method = NbClust_method,
+                                     ntests = ntests,
+                                     seed = seed,
+                                     title = paste(cluster_col,
+                                                   stringr::str_to_title(type),
+                                                   layer,
+                                                   i),
+                                     invisible = pca_sig_labs_invisible)
+                        for (score in scores) {
+                          b_var_res_summary[[score]][["summary"]] <- c(
+                            b_var_res_summary[[score]][["summary"]],
+                            res[[b_var]][[b]][["scores"]][[score]][["summary"]])
+                          b_var_res_summary[[score]][["n"]] <- c(
+                            b_var_res_summary[[score]][["n"]],
+                            res[[b_var]][[b]][["scores"]][[score]][["n"]])
+                          b_var_res_summary[[score]][["p_value"]] <- c(
+                            b_var_res_summary[[score]][["p_value"]],
+                            res[[b_var]][[b]][["scores"]][[score]][["p_value"]])
+                        }
+                      }
+
+                      for (score in scores) {
+                        b_var_res_summary[[score]][["summary"]] <-
+                          mean(b_var_res_summary[[score]][["summary"]])
+
+                        # Requires the number of samples per batch, so run before summing n
+                        p_values_not_na <- stats::na.omit(b_var_res_summary[[score]][["p_value"]])
+                        p_values_not_na_len <- length(p_values_not_na)
+                        if (p_values_not_na_len > 1) {
+                          b_var_res_summary[[score]] <- combine_pvals(b_var_res_summary[[score]],
+                                                                      pval_combine_method)
+                        } else if (p_values_not_na_len == 1) {
+                          b_var_res_summary[[score]][["p_value"]] <- p_values_not_na
+                        } else {
+                          b_var_res_summary[[score]][["p_value"]] <- NULL
+                          b_var_res_summary[[score]][["summary"]] <- NULL
+                        }
+
+                        b_var_res_summary[[score]][["n"]] <-
+                          sum(b_var_res_summary[[score]][["n"]])
+                      }
+                      res[[b_var]][["all"]][["scores"]] <- b_var_res_summary
+                    }
+                  }
+                }
+                if(length(res) == 0) {
+                  return(NULL)
+                } else {
+                  return(res)
+                }
+              }
+            } else {
+              return(NULL)
             }
           }
         )
@@ -1688,7 +1722,7 @@ summarize_cluster_scores <- function(data = NULL,
     if (p_adjustment) {
       p_val_cols <- which(grepl(".p_value",
                                 colnames(df_cluster_by_list[[c]])))
-      for (i in p_val_cols){
+      for (i in p_val_cols) {
         df_cluster_by_list[[c]][, i] <-
           stats::p.adjust(df_cluster_by_list[[c]][, i],
                           method = p_adjust_method)
