@@ -26,7 +26,7 @@ VignetteBuilder: knitr
 URL: https://github.com/carmonalab/scooter
 BugReports: https://github.com/carmonalab/scooter/issues
 License: GNU
-LazyData: no
+LazyData: true
 biocViews:
 Depends: R (>= 4.4.0)
 Imports:
