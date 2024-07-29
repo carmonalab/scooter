@@ -927,7 +927,7 @@ merge_scoot_objects <- function(scoot_object = NULL,
 #' @importFrom data.table rbindlist
 #' @importFrom dplyr mutate mutate_if filter %>% coalesce mutate_all full_join row_number
 #' @importFrom tibble rownames_to_column column_to_rownames remove_rownames
-#' @importFrom ggplot2 aes geom_point guides theme geom_col labs guide_legend annotate theme_bw ggtitle geom_ribbon element_text
+#' @importFrom ggplot2 aes geom_point guides theme geom_col labs guide_legend annotate theme_bw ggtitle geom_ribbon element_text set_last_plot
 #' @importFrom MatrixGenerics rowVars rowMins
 #' @importFrom BiocGenerics counts
 #' @importFrom stringr str_to_title
@@ -972,6 +972,9 @@ get_cluster_score <- function(scoot_object = NULL,
                               ncores = round(parallelly::availableCores() / 2), # Otherwise can lead to memory issues
                               bparam = NULL,
                               progressbar = TRUE) {
+
+  # Drop last ggplot2 from memory to prevent memory garbage collection from main environment
+  ggplot2::set_last_plot(NULL)
 
   if (is.null(scoot_object) ||
       !inherits(scoot_object, "scoot")) {
@@ -1148,6 +1151,7 @@ get_cluster_score <- function(scoot_object = NULL,
         }
 
       } else if (is.list(scoot_object@composition[[layer]])) {
+        ggplot2::set_last_plot(NULL)
         results[[cluster_col]][[type]][[layer]] <-
           BiocParallel::bplapply(
             X = names(scoot_object@composition[[layer]]),
@@ -1275,6 +1279,7 @@ get_cluster_score <- function(scoot_object = NULL,
               } else {
                 return(NULL)
               }
+              ggplot2::set_last_plot(NULL)
             }
           )
         names(results[[cluster_col]][[type]][[layer]]) <-
@@ -1291,6 +1296,7 @@ get_cluster_score <- function(scoot_object = NULL,
     pb_layers <- names(scoot_object@aggregated_profile[[type]])
 
     for (layer in pb_layers) {
+      ggplot2::set_last_plot(NULL)
       results[[cluster_col]][[type]][[layer]] <- BiocParallel::bplapply(
         X = names(scoot_object@aggregated_profile[[type]][[layer]]),
         BPPARAM = param,
@@ -1432,6 +1438,7 @@ get_cluster_score <- function(scoot_object = NULL,
           } else {
             return(NULL)
           }
+          ggplot2::set_last_plot(NULL)
         }
       )
       names(results[[cluster_col]][[type]][[layer]]) <-
@@ -1580,11 +1587,14 @@ get_cluster_score <- function(scoot_object = NULL,
             } else {
               return(NULL)
             }
+            ggplot2::set_last_plot(NULL)
           }
         )
         names(results[[cluster_col]][[type]][[layer]]) <- signatures
       }
     }
+    ggplot2::set_last_plot(NULL)
+    invisible(gc())
   }
 
   # Save user set parameters for summarize_cluster_scores
