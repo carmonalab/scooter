@@ -975,6 +975,7 @@ get_cluster_score <- function(scoot_object = NULL,
 
   # Drop last ggplot2 from memory to prevent memory garbage collection from main environment
   ggplot2::set_last_plot(NULL)
+  invisible(gc())
 
   if (is.null(scoot_object) ||
       !inherits(scoot_object, "scoot")) {
@@ -1029,6 +1030,7 @@ get_cluster_score <- function(scoot_object = NULL,
 
   # Process data ###############################################
   for (cluster_col in cluster_by) {
+    invisible(gc())
     message("Processing ", cluster_col)
 
     ## Process celltype composition ###############################################
@@ -1308,7 +1310,7 @@ get_cluster_score <- function(scoot_object = NULL,
             if (is.null(black_list)) {
               data(default_black_list)
             }
-            black_list <- unlist(black.list)
+            black_list <- unlist(black_list)
 
             # Remove black listed genes from the matrix
             mat <- mat[!row.names(mat) %in% black_list,]
