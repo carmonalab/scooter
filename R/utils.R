@@ -164,7 +164,6 @@ DESeq2.normalize <- function(matrix,
 
 
 #' @importFrom cluster pam
-#' @importFrom NbClust NbClust
 #' @importFrom ggpubr get_legend as_ggplot
 #' @importFrom factoextra fviz_pca fviz_nbclust
 #' @importFrom scran buildKNNGraph
@@ -422,12 +421,14 @@ get_scores <- function(matrix,
     # Determine the optimal number of clusters
     clust_results <- sapply(indeces, function(x) {
       tryCatch({
-        NbClust::NbClust(data = feat_mat,
-                         min.nc = 1,
-                         max.nc = max_nc_adj,
-                         method = NbClust_method,
-                         index = x)
-      }, error=function(e) NULL)
+        fastNbClust(data = feat_mat,
+                    min.nc = 1,
+                    max.nc = max_nc_adj,
+                    method = NbClust_method,
+                    index = x)
+      }, error = function(e) {
+        return(NULL)
+      })
     })
 
     clust_results[sapply(clust_results, is.null)] <- NULL
