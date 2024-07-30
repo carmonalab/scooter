@@ -53,7 +53,7 @@ get_cluster_score(
 
 \item{hdbscan_min_pts}{integer; Minimum size of clusters. See dbscan::hdbscan for details.}
 
-\item{NbClust_method}{Hierarchical clustering method for NbClust::NbClust.}
+\item{NbClust_method}{Hierarchical clustering method for fastNbClust (improved version of NbClust::NbClust).}
 
 \item{ntests}{Number of shuffling events to calculate p-value for scores}
 
