@@ -906,7 +906,7 @@ merge_scoot_objects <- function(scoot_object = NULL,
 #' @param pam_nclusters Number of clusters for PAM clustering. Default: 2 clusters. "auto" uses factoextra::fviz_nbclust(FUNcluster = cluster::pam, method = "silhouette") to suggest a number of clusters.
 #' @param hdbscan_min_pts integer; Minimum size of clusters. See dbscan::hdbscan for details.
 #' @param dist_method Method to compute distance between celltypes, default is euclidean.
-#' @param NbClust_method Hierarchical clustering method for NbClust::NbClust.
+#' @param NbClust_method Hierarchical clustering method for fastNbClust (improved version of NbClust::NbClust).
 #' @param ntests Number of shuffling events to calculate p-value for scores
 #' @param seed Set seed for random shuffling events to calculate p-value for scores
 #' @param pval.combine Method for combining p-values if calculated using batching. Default is "zmethod" weighted (Stouffer's) Z-method, weighting by sample size per batch. Alternatively, Fisher's method can be used with "fisher".
@@ -975,7 +975,6 @@ get_cluster_score <- function(scoot_object = NULL,
 
   # Drop last ggplot2 from memory to prevent memory garbage collection from main environment
   ggplot2::set_last_plot(NULL)
-  invisible(gc())
 
   if (is.null(scoot_object) ||
       !inherits(scoot_object, "scoot")) {
@@ -1030,7 +1029,6 @@ get_cluster_score <- function(scoot_object = NULL,
 
   # Process data ###############################################
   for (cluster_col in cluster_by) {
-    invisible(gc())
     message("Processing ", cluster_col)
 
     ## Process celltype composition ###############################################
@@ -1297,6 +1295,12 @@ get_cluster_score <- function(scoot_object = NULL,
 
     pb_layers <- names(scoot_object@aggregated_profile[[type]])
 
+    # Get black list
+    if (is.null(black_list)) {
+      black_list <- default_black_list
+    }
+    black_list <- unlist(black_list)
+
     for (layer in pb_layers) {
       ggplot2::set_last_plot(NULL)
       results[[cluster_col]][[type]][[layer]] <- BiocParallel::bplapply(
@@ -1306,11 +1310,6 @@ get_cluster_score <- function(scoot_object = NULL,
           mat <- as.matrix(scoot_object@aggregated_profile[[type]][[layer]][[i]])
 
           if (ncol(mat) >= min_samples) {
-            # Get black list
-            if (is.null(black_list)) {
-              data(default_black_list)
-            }
-            black_list <- unlist(black_list)
 
             # Remove black listed genes from the matrix
             mat <- mat[!row.names(mat) %in% black_list,]
@@ -1325,10 +1324,10 @@ get_cluster_score <- function(scoot_object = NULL,
             if (is.null(batching))  {
               if (length(unique(cluster_labels)) > 1) {
                 mat <- DESeq2.normalize(matrix = mat,
-                                          metadata = meta,
-                                          cluster_by = cluster_col,
-                                          nvar_genes = nvar_genes,
-                                          black_list = black_list)
+                                        metadata = meta,
+                                        cluster_by = cluster_col,
+                                        nvar_genes = nvar_genes,
+                                        black_list = black_list)
 
                 res <- get_scores(matrix = mat,
                                   cluster_labels = cluster_labels,
@@ -1369,10 +1368,10 @@ get_cluster_score <- function(scoot_object = NULL,
 
                     if (length(unique(cluster_labels)) > 1) {
                       m <- DESeq2.normalize(matrix = m,
-                                              metadata = met,
-                                              cluster_by = cluster_col,
-                                              nvar_genes = nvar_genes,
-                                              black_list = black_list)
+                                            metadata = met,
+                                            cluster_by = cluster_col,
+                                            nvar_genes = nvar_genes,
+                                            black_list = black_list)
 
                       if (nrow(m) > 1) {
                         res[[b_var]][[b]] <-
