@@ -398,7 +398,6 @@ get_celltype_composition <- function(object = NULL,
 #' @param group_by_aggregated The Seurat object metadata column(s) containing celltype annotations
 #' @param min_cells_aggregated Minimum number of cells per sample and cell type to aggregate data for pseudobulk or aggregated signatures. Aggregated data for cell types with less than that value will not be returned in aggregated data. Default value is 10.
 #' @param assay Assay to retrieve information. By default "RNA".
-#' @param useNA logical whether to return aggregated profile for NA (undefined) cell types, default is FALSE.
 #' @param ... Extra parameters for internal Seurat functions: AverageExpression, AggregateExpression, FindVariableFeatures
 
 #' @importFrom Seurat AverageExpression AggregateExpression FindVariableFeatures
@@ -411,7 +410,6 @@ get_aggregated_profile <- function(object,
                                    group_by_aggregated = NULL,
                                    min_cells_aggregated = 10,
                                    assay = "RNA",
-                                   useNA = FALSE,
                                    ...) {
 
   if (is.null(object)) {
@@ -495,8 +493,7 @@ get_aggregated_profile <- function(object,
       # remove from aggregated data cell with less than min_cells_aggregated
       cnts <- compositional_data(object@meta.data,
                                  group_by_1 = group_by_aggregated[[i]],
-                                 only_counts = TRUE,
-                                 useNA = useNA)
+                                 only_counts = TRUE)
 
       if (nrow(cnts) == 0) {
         next
@@ -507,11 +504,7 @@ get_aggregated_profile <- function(object,
         unlist()
       object@meta.data$fltr <- object@meta.data[[group_by_aggregated[[i]]]]
       object <- object[, as.character(object$fltr) %in% keep]
-
-      # Handle not annotated cells being labelled as NA
-      # object@meta.data[[group_by_aggregated[[i]]]] <- as.character(object@meta.data[[group_by_aggregated[[i]]]])
-      # object@meta.data[[group_by_aggregated[[i]]]][is.na(object@meta.data[[group_by_aggregated[[i]]]])] <- "NA"
-      # object@meta.data[[group_by_aggregated[[i]]]] <- as.factor(object@meta.data[[group_by_aggregated[[i]]]])
+      object <- object[, !is.na(object$fltr)]
 
       if (length(unique(object@meta.data[[group_by_aggregated[[i]]]])) >= 2) {
         suppressWarnings(
@@ -528,14 +521,13 @@ get_aggregated_profile <- function(object,
       } else {
         # Handle case if there is only one cell type
         col_name <- as.character(unique(object@meta.data[[group_by_aggregated[[i]]]]))
-        colnames(avg_exp[[i]])[colnames(avg_exp[[i]]) == "all.annotated_only"] <- col_name
+        avg_exp[[i]] <- object@assays[["RNA"]]["counts"]
+        row_names <- row.names(avg_exp[[i]])
+        avg_exp[[i]] <- Matrix::Matrix(rowSums(avg_exp[[i]]))
+        row.names(avg_exp[[i]]) <- row_names
+        colnames(avg_exp[[i]]) <- col_name
       }
     })
-
-    if (useNA == FALSE) {
-      # Drop NA column
-      avg_exp[[i]] <- avg_exp[[i]][, !colnames(avg_exp[[i]]) %in% "NA", drop = FALSE]
-    }
   }
   return(avg_exp)
 }

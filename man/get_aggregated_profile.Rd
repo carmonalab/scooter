@@ -9,7 +9,6 @@ get_aggregated_profile(
   group_by_aggregated = NULL,
   min_cells_aggregated = 10,
   assay = "RNA",
-  useNA = FALSE,
   ...
 )
 }
@@ -21,8 +20,6 @@ get_aggregated_profile(
 \item{min_cells_aggregated}{Minimum number of cells per sample and cell type to aggregate data for pseudobulk or aggregated signatures. Aggregated data for cell types with less than that value will not be returned in aggregated data. Default value is 10.}
 
 \item{assay}{Assay to retrieve information. By default "RNA".}
-
-\item{useNA}{logical whether to return aggregated profile for NA (undefined) cell types, default is FALSE.}
 
 \item{...}{Extra parameters for internal Seurat functions: AverageExpression, AggregateExpression, FindVariableFeatures}
 }
