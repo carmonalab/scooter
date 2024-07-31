@@ -959,21 +959,15 @@ scores_composite_pca <- function(scores,
     mat <- scores[[c]][["composition"]][["layer_1"]][["distance_matrix"]]
     results[[c]][["matrices"]][["L1"]] <- mat
 
-    res.pca <- prcomp(mat)
-
     clust_labels <- scoot_summary@metadata[match(row.names(mat), scoot_summary@metadata[["scoot_sample"]]), ][[c]]
     sil <- calc_sil(dist_mat = as.dist(mat),
                     labels = clust_labels,
                     return_mean = TRUE) %>% round(3)
 
-    results[[c]][["plots"]][["L1"]] <- factoextra::fviz_pca(res.pca,
-                                                            habillage = clust_labels,
-                                                            label = "var",
-                                                            pointsize = 3,
-                                                            invisible = c("var", "quali"),
-                                                            geom = "point") +
-      ggtitle(paste("L1 - PCA - low-res cell type composition\n Silhouette score:", sil)) +
-      coord_equal()
+    results[[c]][["plots"]][["L1"]] <- plot_pca(mat,
+                                                label = "none",
+                                                color_cluster_by = clust_labels) +
+      ggtitle(paste("L1 - PCA - low-res cell type composition\n Silhouette score:", sil))
 
 
     # L2 ###############################################
@@ -983,24 +977,19 @@ scores_composite_pca <- function(scores,
       mats[[i]] <- scores[[c]][["composition"]][["layer_2"]][[i]][["distance_matrix"]]
     }
 
-    avg_matrix <- get_avg_matrix(mats)
+    mat <- get_avg_matrix(mats)
 
-    results[[c]][["matrices"]][["L2"]] <- avg_matrix
+    results[[c]][["matrices"]][["L2"]] <- mat
 
-    res.pca <- prcomp(avg_matrix)
-
-    clust_labels <- scoot_summary@metadata[match(row.names(avg_matrix), scoot_summary@metadata[["scoot_sample"]]), ][[c]]
-    sil <- calc_sil(dist_mat = as.dist(avg_matrix),
+    clust_labels <- scoot_summary@metadata[match(row.names(mat), scoot_summary@metadata[["scoot_sample"]]), ][[c]]
+    sil <- calc_sil(dist_mat = as.dist(mat),
                     labels = clust_labels,
                     return_mean = TRUE) %>% round(3)
 
-    results[[c]][["plots"]][["L2"]] <- factoextra::fviz_pca(res.pca,
-                                                            habillage = clust_labels,
-                                                            pointsize = 3,
-                                                            invisible = c("var", "quali"),
-                                                            geom = "point") +
-      ggtitle(paste("L2 - PCA - hi-res cell type composition\nSilhouette score:", sil)) +
-      coord_equal()
+    results[[c]][["plots"]][["L2"]] <- plot_pca(mat,
+                                                label = "none",
+                                                color_cluster_by = clust_labels) +
+      ggtitle(paste("L2 - PCA - hi-res cell type composition\nSilhouette score:", sil))
 
 
     # L3 ###############################################
@@ -1013,46 +1002,36 @@ scores_composite_pca <- function(scores,
       mats[[paste0("layer_2_", i)]] <- scores[[c]][["signatures"]][["layer_1"]][[i]][["distance_matrix"]]
     }
 
-    avg_matrix <- get_avg_matrix(mats)
+    mat <- get_avg_matrix(mats)
 
-    results[[c]][["matrices"]][["L3"]] <- avg_matrix
+    results[[c]][["matrices"]][["L3"]] <- mat
 
-    res.pca <- prcomp(avg_matrix)
-
-    clust_labels <- scoot_summary@metadata[match(row.names(avg_matrix), scoot_summary@metadata[["scoot_sample"]]), ][[c]]
-    sil <- calc_sil(dist_mat = as.dist(avg_matrix),
+    clust_labels <- scoot_summary@metadata[match(row.names(mat), scoot_summary@metadata[["scoot_sample"]]), ][[c]]
+    sil <- calc_sil(dist_mat = as.dist(mat),
                     labels = clust_labels,
                     return_mean = TRUE) %>% round(3)
 
-    results[[c]][["plots"]][["L3"]] <- factoextra::fviz_pca(res.pca,
-                                                            habillage = clust_labels,
-                                                            pointsize = 3,
-                                                            invisible = c("var", "quali"),
-                                                            geom = "point") +
-      ggtitle(paste("L3 - PCA - signature expression per cell type\nSilhouette score:", sil)) +
-      coord_equal()
+    results[[c]][["plots"]][["L3"]] <- plot_pca(mat,
+                                                label = "none",
+                                                color_cluster_by = clust_labels) +
+      ggtitle(paste("L3 - PCA - signature expression per cell type\nSilhouette score:", sil))
 
 
     # L1_L2_L3_combined ###############################################
 
-    avg_matrix <- get_avg_matrix(results[[c]][["matrices"]])
+    mat <- get_avg_matrix(results[[c]][["matrices"]])
 
-    results[[c]][["matrices"]][["L1_L2_L3_combined"]] <- avg_matrix
+    results[[c]][["matrices"]][["L1_L2_L3_combined"]] <- mat
 
-    res.pca <- prcomp(avg_matrix)
-
-    clust_labels <- scoot_summary@metadata[match(row.names(avg_matrix), scoot_summary@metadata[["scoot_sample"]]), ][[c]]
-    sil <- calc_sil(dist_mat = as.dist(avg_matrix),
+    clust_labels <- scoot_summary@metadata[match(row.names(mat), scoot_summary@metadata[["scoot_sample"]]), ][[c]]
+    sil <- calc_sil(dist_mat = as.dist(mat),
                     labels = clust_labels,
                     return_mean = TRUE) %>% round(3)
 
-    results[[c]][["plots"]][["L1_L2_L3_combined"]] <- factoextra::fviz_pca(res.pca,
-                                                                           habillage = clust_labels,
-                                                                           pointsize = 3,
-                                                                           invisible = c("var", "quali"),
-                                                                           geom = "point") +
-      ggtitle(paste("L1_L2_L3_combined - PCA \nSilhouette score:", sil)) +
-      coord_equal()
+    results[[c]][["plots"]][["L1_L2_L3_combined"]] <- plot_pca(mat,
+                                                                label = "none",
+                                                                color_cluster_by = clust_labels) +
+      ggtitle(paste("L1_L2_L3_combined - PCA \nSilhouette score:", sil))
 
 
     # B1 ###############################################
@@ -1060,21 +1039,15 @@ scores_composite_pca <- function(scores,
     mat <- scores[[c]][["pseudobulk"]][["layer_1"]][["all"]][["distance_matrix"]]
     results[[c]][["matrices"]][["B1"]] <- mat
 
-    res.pca <- prcomp(mat)
-
     clust_labels <- scoot_summary@metadata[match(row.names(mat), scoot_summary@metadata[["scoot_sample"]]), ][[c]]
     sil <- calc_sil(dist_mat = as.dist(mat),
                     labels = clust_labels,
                     return_mean = TRUE) %>% round(3)
 
-    results[[c]][["plots"]][["B1"]] <- factoextra::fviz_pca(res.pca,
-                                                            habillage = clust_labels,
-                                                            label = "var",
-                                                            pointsize = 3,
-                                                            invisible = c("var", "quali"),
-                                                            geom = "point") +
-      ggtitle(paste("B1 - pseudobulk PCA\n Silhouette score:", sil)) +
-      coord_equal()
+    results[[c]][["plots"]][["B1"]] <- plot_pca(mat,
+                                                label = "none",
+                                                color_cluster_by = clust_labels) +
+      ggtitle(paste("B1 - pseudobulk PCA\n Silhouette score:", sil))
 
 
     # Combine plots ###############################################
