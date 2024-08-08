@@ -6,10 +6,8 @@
 \usage{
 scoot(
   object,
-  group_by = list(layer_1 = "scGate_multi", layer_2 = "functional.cluster"),
-  split_by = NULL,
-  min_cells_composition = 10,
-  min_cells_aggregated = 10,
+  ann_layer_cols = list(layer_1 = "scGate_multi", layer_2 = "functional.cluster"),
+  min_cells = 10,
   name_additional_signatures = c("IFN_UCell", "HeatShock_UCell", "cellCycle.G1S_UCell",
     "cellCycle.G2M_UCell"),
   useNA = FALSE,
@@ -23,19 +21,15 @@ scoot(
 )
 }
 \arguments{
-\item{object}{A Seurat object or a list of Seurat objects}
+\item{object}{A Seurat object or a list of Seurat objects.}
 
-\item{group_by}{List or vector with one or multiple Seurat object metadata columns with cell type predictions to group by (e.g. layer 1 cell type classification)}
+\item{ann_layer_cols}{List or vector with one or multiple Seurat object metadata columns with cell type annotations (e.g. layer 1 broad cell type annotation (CD4, CD8, ...) and layer 2 with high-resolution subtypes (CD4.treg, CD4.tfh, CD8.naive, CD8.exhausted, ...))}
 
-\item{split_by}{A Seurat object metadata column to split by compositional data (e.g. sample names) \link{get_celltype_composition}}
-
-\item{min_cells_composition}{Parameter for internal \link{get_celltype_composition}. Minimum number of cells annotated in a group_by parameter to render the cell type composition. If the number of cells annotated for a certain group_by parameter is less, compositional data will not be rendered. Default value is 10.}
-
-\item{min_cells_aggregated}{Parameter for internal \link{get_aggregated_profile} and \link{get_aggregated_signature}. Minimum number of cells per sample and cell type to aggregate data for pseudobulk or aggregated signatures. Aggregated data for cell types with less than that value will not be returned in aggregated data. Default value is 10.}
+\item{min_cells}{Minimum number of cells for any annotated cell type in layer_1.}
 
 \item{name_additional_signatures}{Names of additional signatures as found in object metadata to take into account.}
 
-\item{useNA}{logical whether to return aggregated profile for NA (undefined) cell types, default is FALSE.}
+\item{useNA}{logical whether to return aggregated profile for NA (undefined) cell types.}
 
 \item{clr_zero_impute_perc}{Parameter for internal \link{get_celltype_composition}.}
 

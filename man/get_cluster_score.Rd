@@ -12,9 +12,10 @@ get_cluster_score(
   batching = NULL,
   scores = c("silhouette_isolated", "silhouette", "modularity"),
   dist_method = "euclidean",
-  modularity_k = 3,
+  clust_method = c("pam_clust", "h_clust"),
+  knn_k = "auto",
   max_nc = 5,
-  pam_nclusters = "auto",
+  n_clust = "auto",
   hdbscan_min_pts = 3,
   NbClust_method = "ward.D2",
   ntests = 100,
@@ -23,7 +24,6 @@ get_cluster_score(
   pca_comps_labs_invisible = c("quali"),
   pca_pb_labs_invisible = c("quali"),
   pca_sig_labs_invisible = c("quali"),
-  ndim = 10,
   nvar_genes = 500,
   black_list = NULL,
   pca_n_hvg = 20,
@@ -47,11 +47,9 @@ get_cluster_score(
 
 \item{dist_method}{Method to compute distance between celltypes, default is euclidean.}
 
-\item{modularity_k}{Number of k-nearest neighbors to use to build graph for the calculation of the modularity score}
+\item{knn_k}{Number of k-nearest neighbors used for the calculation of modularity score and leiden clustering. Default "auto" uses the square root of the total number of samples.}
 
-\item{pam_nclusters}{Number of clusters for PAM clustering. Default: 2 clusters. "auto" uses factoextra::fviz_nbclust(FUNcluster = cluster::pam, method = "silhouette") to suggest a number of clusters.}
-
-\item{hdbscan_min_pts}{integer; Minimum size of clusters. See dbscan::hdbscan for details.}
+\item{n_clust}{Number of clusters for unsupervised clustering. Use "auto" to automatically determine it. Alternatively, put an integer to force a specific number of clusters.}
 
 \item{NbClust_method}{Hierarchical clustering method for fastNbClust (improved version of NbClust::NbClust).}
 
@@ -64,8 +62,6 @@ get_cluster_score(
 \item{pca_pb_labs_invisible}{Parameter to pass to fviz_pca defining which labels to plot for pseudobulk PCA, see documentation of fviz_pca for details.}
 
 \item{pca_sig_labs_invisible}{Parameter to pass to fviz_pca defining which labels to plot for signatures PCA, see documentation of fviz_pca for details.}
-
-\item{ndim}{Number of dimensions to be use for PCA clustering metrics. Default is 10.}
 
 \item{nvar_genes}{Number of variable genes to assess samples. Default is 500.}
 
