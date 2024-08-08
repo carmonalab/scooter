@@ -64,7 +64,7 @@ Imports:
   cluster (>= 2.1.6),
   cccd (>= 1.6),
   fastcluster (>= 1.2.6),
-  dbscan (>= 1.2-0)
+  mclust (>= 6.1.1)
 Suggests: 
     knitr,
     rmarkdown,
