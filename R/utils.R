@@ -440,15 +440,15 @@ DESeq2.normalize <- function(matrix,
 #' @importFrom igraph modularity set_vertex_attr layout_nicely V strength gorder
 #' @importFrom patchwork wrap_plots plot_layout plot_annotation wrap_elements plot_spacer
 #' @importFrom ggraph ggraph geom_edge_link geom_node_point
+#' @importFrom mclust Mclust mclustBIC
 
-get_scores <- function(matrix,
+get_scores <- function(feat_mat,
                        cluster_labels,
                        scores,
                        dist_method,
-                       modularity_k,
+                       knn_k,
                        max_nc,
-                       pam_nclusters,
-                       hdbscan_min_pts,
+                       n_clust,
                        NbClust_method,
                        ntests = 100, # number of shuffling events
                        seed = 22, # seed for random shuffling
@@ -457,7 +457,12 @@ get_scores <- function(matrix,
                        invisible = c("var", "quali"),
                        select_var = NULL) {
 
-  feat_mat <- t(matrix)
+  if (knn_k == "auto") {
+    knn_k <- round(sqrt(nrow(feat_mat)))
+    if (knn_k < 3) {
+      knn_k <- 3
+    }
+  }
 
   results <- list()
 
@@ -595,10 +600,10 @@ get_scores <- function(matrix,
           ## Modularity ###############################################
           if (s == "modularity") {
 
-            if (length(cluster_labels) >= (modularity_k + 1)) {
+            if (length(cluster_labels) > (knn_k)) {
               mod_res <- calc_modularity(feat_mat = feat_mat,
                                          labels = cluster_labels,
-                                         k = modularity_k)
+                                         k = knn_k)
               g <- mod_res[["graph"]]
 
               # Plotting the graph
@@ -606,7 +611,7 @@ get_scores <- function(matrix,
 
               args_list <- list(feat_mat = feat_mat,
                                 labels = cluster_labels,
-                                k = modularity_k)
+                                k = knn_k)
 
               p_val <- perm_test(fun = calc_modularity,
                                  args_list = args_list,
@@ -627,7 +632,7 @@ get_scores <- function(matrix,
                                         shape = 21,
                                         color = "black",
                                         size = 3) +
-                ggplot2::ggtitle(paste("kNN plot with k = ", modularity_k,
+                ggplot2::ggtitle(paste("kNN plot with k = ", knn_k,
                                        "\nModularity score = ", round(mod_res[["score"]], 3),
                                        ifelse(!is.null(p_val),
                                               paste("\np-value:",
@@ -736,7 +741,7 @@ get_scores <- function(matrix,
       args_list <- list(dist_mat = dist_mat,
                         feat_mat = feat_mat,
                         labels = cluster_labels_unsup,
-                        k = modularity_k)
+                        k = knn_k)
       score_title <- unsup_clus_score_title(args_list)
 
       cluster_plot_list[["pca_hclust_clustered"]] <- plot_pca(feat_mat,
@@ -749,9 +754,36 @@ get_scores <- function(matrix,
     }
 
 
+    ## GMM clustering ###############################################
+
+    cluster_labels_unsup <- mclust::Mclust(feat_mat, G = nclust)$classification
+
+    # Plot PCA
+    if (nclust == 1) {
+      cluster_plot_list[["pca_gmm_clustered"]] <- plot_pca(feat_mat,
+                                                           label = "var",
+                                                           pointsize = 1.5) +
+        ggplot2::ggtitle("GMM")
+    } else {
+      args_list <- list(dist_mat = dist_mat,
+                        feat_mat = feat_mat,
+                        labels = cluster_labels_unsup,
+                        k = knn_k)
+      score_title <- unsup_clus_score_title(args_list)
+
+      cluster_plot_list[["pca_gmm_clustered"]] <- plot_pca(feat_mat,
+                                                           label = "var",
+                                                           pointsize = 1.5,
+                                                           color_cluster_by = cluster_labels_unsup,
+                                                           add_ellipses = TRUE) +
+        ggplot2::ggtitle(paste0("PAM", score_title)) +
+        ggplot2::theme(legend.position="none")
+    }
+
+
     ## PAM clustering ###############################################
 
-    if (pam_nclusters == "auto") {
+    if (n_clust == "auto") {
       # Find number of clusters with PAM and silhouette method
 
       p <-
@@ -765,10 +797,10 @@ get_scores <- function(matrix,
       # results[["plots"]][["number_of_clusters"]] <- p
       nclust <- as.numeric(p$data$clusters[which.max(p$data$y)])
     } else {
-      if (length(cluster_labels) < pam_nclusters) {
+      if (length(cluster_labels) < n_clust) {
         nclust <- length(cluster_labels)
       } else {
-        nclust <- pam_nclusters
+        nclust <- n_clust
       }
     }
 
@@ -784,7 +816,7 @@ get_scores <- function(matrix,
       args_list <- list(dist_mat = dist_mat,
                         feat_mat = feat_mat,
                         labels = cluster_labels_unsup,
-                        k = modularity_k)
+                        k = knn_k)
       score_title <- unsup_clus_score_title(args_list)
 
       cluster_plot_list[["pca_pam_clustered"]] <- plot_pca(feat_mat,
@@ -799,7 +831,7 @@ get_scores <- function(matrix,
 
     ## Leiden clustering ###############################################
 
-    adj_graph <- igraph::as.undirected(cccd::nng(feat_mat, k = 3))
+    adj_graph <- igraph::as.undirected(cccd::nng(feat_mat, k = knn_k))
     r <- quantile(igraph::strength(adj_graph))[2] / (igraph::gorder(adj_graph) - 1) / 4
     cluster_labels_unsup <- igraph::cluster_leiden(adj_graph, resolution_parameter = r)$membership
 
@@ -813,7 +845,7 @@ get_scores <- function(matrix,
       args_list <- list(dist_mat = dist_mat,
                         feat_mat = feat_mat,
                         labels = cluster_labels_unsup,
-                        k = modularity_k)
+                        k = knn_k)
       score_title <- unsup_clus_score_title(args_list)
 
       cluster_plot_list[["pca_leiden_clustered"]] <- plot_pca(feat_mat,
@@ -822,34 +854,6 @@ get_scores <- function(matrix,
                                                               color_cluster_by = cluster_labels_unsup,
                                                               add_ellipses = TRUE) +
         ggplot2::ggtitle(paste0("Leiden", score_title)) +
-        ggplot2::theme(legend.position="none")
-    }
-
-
-    ## HDBSCAN clustering ###############################################
-
-    cl <- dbscan::hdbscan(feat_mat, minPts = hdbscan_min_pts)
-    cluster_labels_unsup <- cl$cluster+1
-
-    # Plot PCA
-    if (length(unique(cluster_labels_unsup)) == 1) {
-      cluster_plot_list[["pca_hdbscan_clustered"]] <- plot_pca(feat_mat,
-                                                               label = "var",
-                                                               pointsize = 1.5) +
-        ggplot2::ggtitle("HDBSCAN")
-    } else {
-      args_list <- list(dist_mat = dist_mat,
-                        feat_mat = feat_mat,
-                        labels = cluster_labels_unsup,
-                        k = modularity_k)
-      score_title <- unsup_clus_score_title(args_list)
-
-      cluster_plot_list[["pca_hdbscan_clustered"]] <- plot_pca(feat_mat,
-                                                               label = "var",
-                                                               pointsize = 1.5,
-                                                               color_cluster_by = cluster_labels_unsup,
-                                                               add_ellipses = TRUE) +
-        ggplot2::ggtitle(paste0("HDBSCAN", score_title)) +
         ggplot2::theme(legend.position="none")
     }
 

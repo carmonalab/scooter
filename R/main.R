@@ -914,9 +914,8 @@ merge_scoot_objects <- function(scoot_object = NULL,
 #' @param cluster_by_drop_na Whether to keep (FALSE) or drop (TRUE) NAs present in cluster_by column.
 #' @param batching Vector indicating the variable for batching to allow calculating scores per batch, to account for batch effect
 #' @param scores scores to compute clustering of samples based on cell type prediction.
-#' @param modularity_k Number of k-nearest neighbors to use to build graph for the calculation of the modularity score
-#' @param pam_nclusters Number of clusters for PAM clustering. Default: 2 clusters. "auto" uses factoextra::fviz_nbclust(FUNcluster = cluster::pam, method = "silhouette") to suggest a number of clusters.
-#' @param hdbscan_min_pts integer; Minimum size of clusters. See dbscan::hdbscan for details.
+#' @param knn_k Number of k-nearest neighbors used for the calculation of modularity score and leiden clustering. Default "auto" uses the square root of the total number of samples.
+#' @param n_clust Number of clusters for unsupervised clustering. Use "auto" to automatically determine it. Alternatively, put an integer to force a specific number of clusters.
 #' @param dist_method Method to compute distance between celltypes, default is euclidean.
 #' @param NbClust_method Hierarchical clustering method for fastNbClust (improved version of NbClust::NbClust).
 #' @param ntests Number of shuffling events to calculate p-value for scores
@@ -925,7 +924,6 @@ merge_scoot_objects <- function(scoot_object = NULL,
 #' @param pca_comps_labs_invisible Parameter to pass to fviz_pca defining which labels to plot for composition PCA, see documentation of fviz_pca for details.
 #' @param pca_pb_labs_invisible Parameter to pass to fviz_pca defining which labels to plot for pseudobulk PCA, see documentation of fviz_pca for details.
 #' @param pca_sig_labs_invisible Parameter to pass to fviz_pca defining which labels to plot for signatures PCA, see documentation of fviz_pca for details.
-#' @param ndim Number of dimensions to be use for PCA clustering metrics. Default is 10.
 #' @param nvar_genes Number of variable genes to assess samples. Default is 500.
 #' @param black_list List of genes to discard from clustering, if "default" object "default_black_list" object is used. Alternative black listed genes can be provided as a vector or list.
 #' @param pca_n_hvg Number of most highly variable genes to plot on the PCA (for pseudobulks).
@@ -959,9 +957,10 @@ get_cluster_score <- function(scoot_object = NULL,
                               batching = NULL,
                               scores = c("silhouette_isolated", "silhouette", "modularity"),
                               dist_method = "euclidean",
-                              modularity_k = 3,
+                              clust_method = c("pam_clust", "h_clust"),
+                              knn_k = "auto",
                               max_nc = 5,
-                              pam_nclusters = "auto",
+                              n_clust = "auto",
                               hdbscan_min_pts = 3,
                               NbClust_method = "ward.D2",
 
@@ -996,15 +995,25 @@ get_cluster_score <- function(scoot_object = NULL,
   }
 
   if (!any(cluster_by %in% names(scoot_object@metadata))) {
-    stop("group_by variables ", paste(cluster_by, collapse = ", "), " not found in metadata")
+    stop("cluster_by variables ", paste(cluster_by, collapse = ", "), " not found in metadata")
   } else if (!all(cluster_by %in% names(scoot_object@metadata))) {
     cluster_by <- cluster_by[cluster_by %in% names(scoot_object@metadata)]
     message("Only found ", paste(cluster_by, collapse = ", ") , " as grouping variable for scoot Object.")
   }
 
-  if (!is.numeric(pam_nclusters) &&
-      !pam_nclusters == "auto") {
-    stop("pam_nclusters must be numeric or 'auto'.")
+  if (!is.numeric(min_samples) ||
+      !length(min_samples) == 1) {
+    stop("Please provide a single numeric for min_samples.")
+  }
+  min_samples <- round(min_samples)
+  if (min_samples < 5) {
+    min_samples <- 5
+    message("min_samples samples should not be less than 5 and was automatically set to 5")
+  }
+
+  if (!n_clust == "auto" &&
+      (!is.numeric(n_clust) || !length(n_clust) == 1 || n_clust < 2)) {
+    stop("n_clust must be a single numeric >= 2 or 'auto'.")
   }
 
   # Need to replace special characters
@@ -1093,6 +1102,12 @@ get_cluster_score <- function(scoot_object = NULL,
     comp_layers <- names(scoot_object@composition)
 
     for (layer in comp_layers) {
+
+      get_scores_args[c("title", "invisible")] <- list(title = paste(cluster_col,
+                                                                     stringr::str_to_title(type),
+                                                                     layer),
+                                                       invisible = pca_comps_labs_invisible)
+
       if (inherits(scoot_object@composition[[layer]], "data.frame")) {
         mat <- scoot_object@composition[[layer]][, c("celltype", "clr", "scoot_sample"), with = FALSE]
 
@@ -1104,32 +1119,21 @@ get_cluster_score <- function(scoot_object = NULL,
                              values_from = clr) %>%
           stats::na.omit() %>%
           tibble::column_to_rownames(var = "celltype") %>%
+          t() %>%
           scale(center = TRUE,
                 scale = FALSE)
 
-        if (ncol(mat) >= min_samples) {
+        if (nrow(mat) >= min_samples) {
 
           if (is.null(batching))  {
             cluster_labels <- scoot_object@metadata %>%
-              dplyr::filter(scoot_sample %in% colnames(mat)) %>%
+              dplyr::filter(scoot_sample %in% row.names(mat)) %>%
               .[[cluster_col]]
 
-            results[[cluster_col]][[type]][[layer]] <-
-              get_scores(matrix = mat,
-                         cluster_labels = cluster_labels,
-                         scores = scores,
-                         dist_method = dist_method,
-                         modularity_k = modularity_k,
-                         max_nc = max_nc,
-                         pam_nclusters = pam_nclusters,
-                         hdbscan_min_pts = hdbscan_min_pts,
-                         NbClust_method = NbClust_method,
-                         ntests = ntests,
-                         seed = seed,
-                         title = paste(cluster_col,
-                                       stringr::str_to_title(type),
-                                       layer),
-                         invisible = pca_comps_labs_invisible)
+            get_scores_args[c("feat_mat", "cluster_labels")] <- list(feat_mat = mat,
+                                                                     cluster_labels = cluster_labels)
+
+            results[[cluster_col]][[type]][[layer]] <- get_scores(get_scores_args)
           }
 
           if (!is.null(batching))  {
@@ -1139,30 +1143,19 @@ get_cluster_score <- function(scoot_object = NULL,
                 for (b in unique(scoot_object@metadata[[b_var]])) {
                   meta <- scoot_object@metadata %>%
                     dplyr::filter(get(b_var) == b) %>%
-                    dplyr::filter(scoot_sample %in% colnames(mat))
+                    dplyr::filter(scoot_sample %in% row.names(mat))
 
                   cluster_labels <- meta[[cluster_col]]
 
-                  m <- mat[ , colnames(mat) %in% as.character(meta[["scoot_sample"]])] %>%
+                  m <- mat[ , row.names(mat) %in% as.character(meta[["scoot_sample"]])] %>%
                     scale(center = TRUE,
                           scale = FALSE)
 
-                  results[[cluster_col]][[type]][[layer]][[b_var]][[b]] <-
-                    get_scores(matrix = m,
-                               cluster_labels = cluster_labels,
-                               scores = scores,
-                               dist_method = dist_method,
-                               modularity_k = modularity_k,
-                               max_nc = max_nc,
-                               pam_nclusters = pam_nclusters,
-                               hdbscan_min_pts = hdbscan_min_pts,
-                               NbClust_method = NbClust_method,
-                               ntests = ntests,
-                               seed = seed,
-                               title = paste(cluster_col,
-                                             stringr::str_to_title(type),
-                                             layer),
-                               invisible = pca_comps_labs_invisible)
+                  get_scores_args[c("feat_mat", "cluster_labels")] <- list(feat_mat = mat,
+                                                                           cluster_labels = cluster_labels)
+
+                  results[[cluster_col]][[type]][[layer]][[b_var]][[b]] <- get_scores(get_scores_args)
+
                   for (score in scores) {
                     b_var_res_summary[[score]][["summary"]] <- c(
                       b_var_res_summary[[score]][["summary"]],
@@ -1177,6 +1170,7 @@ get_cluster_score <- function(scoot_object = NULL,
                 }
 
                 for (score in scores) {
+                  b_var_res_summary[[score]][["summary"]] <- stats::na.omit(b_var_res_summary[[score]][["summary"]])
                   b_var_res_summary[[score]][["summary"]] <-
                     mean(b_var_res_summary[[score]][["summary"]])
 
@@ -1213,6 +1207,11 @@ get_cluster_score <- function(scoot_object = NULL,
             function(i) {
               mat <- scoot_object@composition[[layer]][[i]][, c("celltype", "clr", "scoot_sample"), with = F]
 
+              get_scores_args[["title"]] <- paste(cluster_col,
+                                                  stringr::str_to_title(type),
+                                                  layer,
+                                                  i)
+
               if (cluster_by_drop_na) {
                 mat <- mat %>% filter(scoot_sample %in% scoot_object@metadata[["scoot_sample"]])
               }
@@ -1220,33 +1219,21 @@ get_cluster_score <- function(scoot_object = NULL,
                 tidyr::pivot_wider(names_from = scoot_sample,
                                    values_from = clr) %>%
                 tibble::column_to_rownames(var = "celltype") %>%
+                t() %>%
                 scale(center = TRUE,
                       scale = FALSE)
 
-              if (ncol(mat) >= min_samples) {
+              if (nrow(mat) >= min_samples) {
 
                 if (is.null(batching))  {
                   cluster_labels <- scoot_object@metadata %>%
-                    dplyr::filter(scoot_sample %in% colnames(mat)) %>%
+                    dplyr::filter(scoot_sample %in% row.names(mat)) %>%
                     .[[cluster_col]]
 
                   if (nrow(mat) > 1) {
-                    res <- get_scores(matrix = mat,
-                                      cluster_labels = cluster_labels,
-                                      scores = scores,
-                                      dist_method = dist_method,
-                                      modularity_k = modularity_k,
-                                      max_nc = max_nc,
-                                      pam_nclusters = pam_nclusters,
-                                      hdbscan_min_pts = hdbscan_min_pts,
-                                      NbClust_method = NbClust_method,
-                                      ntests = ntests,
-                                      seed = seed,
-                                      title = paste(cluster_col,
-                                                    stringr::str_to_title(type),
-                                                    layer,
-                                                    i),
-                                      invisible = pca_comps_labs_invisible)
+                    get_scores_args[c("feat_mat", "cluster_labels")] <-
+                      list(feat_mat = mat, cluster_labels = cluster_labels)
+                    res <- get_scores(get_scores_args)
                     return(res)
                   } else {
                     return(NULL)
@@ -1261,31 +1248,19 @@ get_cluster_score <- function(scoot_object = NULL,
                       for (b in unique(scoot_object@metadata[[b_var]])) {
                         meta <- scoot_object@metadata %>%
                           dplyr::filter(get(b_var) == b) %>%
-                          dplyr::filter(scoot_sample %in% colnames(mat))
+                          dplyr::filter(scoot_sample %in% row.names(mat))
 
                         cluster_labels <- meta[[cluster_col]]
 
-                        m <- mat[ , colnames(mat) %in% as.character(meta[["scoot_sample"]])] %>%
-                          scale(center = TRUE, scale = FALSE)
+                        m <- mat[ , row.names(mat) %in% as.character(meta[["scoot_sample"]])] %>%
+                          scale(center = TRUE,
+                                scale = FALSE)
 
                         if (nrow(m) > 1) {
+                          get_scores_args[c("feat_mat", "cluster_labels")] <-
+                            list(feat_mat = m, cluster_labels = cluster_labels)
                           res[[b_var]][[b]] <-
-                            get_scores(matrix = m,
-                                       cluster_labels = cluster_labels,
-                                       scores = scores,
-                                       dist_method = dist_method,
-                                       modularity_k = modularity_k,
-                                       max_nc = max_nc,
-                                       pam_nclusters = pam_nclusters,
-                                       hdbscan_min_pts = hdbscan_min_pts,
-                                       NbClust_method = NbClust_method,
-                                       ntests = ntests,
-                                       seed = seed,
-                                       title = paste(cluster_col,
-                                                     stringr::str_to_title(type),
-                                                     layer,
-                                                     i),
-                                       invisible = pca_comps_labs_invisible)
+                            get_scores(get_scores_args)
                         }
 
                         for (score in scores) {
@@ -1302,6 +1277,7 @@ get_cluster_score <- function(scoot_object = NULL,
                       }
 
                       for (score in scores) {
+                        b_var_res_summary[[score]][["summary"]] <- stats::na.omit(b_var_res_summary[[score]][["summary"]])
                         b_var_res_summary[[score]][["summary"]] <-
                           mean(b_var_res_summary[[score]][["summary"]])
 
@@ -1363,6 +1339,14 @@ get_cluster_score <- function(scoot_object = NULL,
         function(i) {
           mat <- as.matrix(scoot_object@aggregated_profile[[type]][[layer]][[i]])
 
+          get_scores_args[c("title", "invisible", "select_var")] <-
+            list(title = paste(cluster_col,
+                               stringr::str_to_title(type),
+                               layer,
+                               i),
+                 invisible = pca_pb_labs_invisible,
+                 select_var = list(cos2 = pca_n_hvg))
+
           if (ncol(mat) >= min_samples) {
 
             # Remove black listed genes from the matrix
@@ -1383,23 +1367,9 @@ get_cluster_score <- function(scoot_object = NULL,
                                         nvar_genes = nvar_genes,
                                         black_list = black_list)
 
-                res <- get_scores(matrix = mat,
-                                  cluster_labels = cluster_labels,
-                                  scores = scores,
-                                  dist_method = dist_method,
-                                  modularity_k = modularity_k,
-                                  max_nc = max_nc,
-                                  pam_nclusters = pam_nclusters,
-                                  hdbscan_min_pts = hdbscan_min_pts,
-                                  NbClust_method = NbClust_method,
-                                  ntests = ntests,
-                                  seed = seed,
-                                  title = paste(cluster_col,
-                                                stringr::str_to_title(type),
-                                                layer,
-                                                i),
-                                  invisible = pca_pb_labs_invisible,
-                                  select_var = list(cos2 = pca_n_hvg))
+                get_scores_args[c("feat_mat", "cluster_labels")] <-
+                  list(feat_mat = t(mat), cluster_labels = cluster_labels)
+                res <- get_scores(get_scores_args)
                 return(res)
               } else {
                 return(NULL)
@@ -1428,24 +1398,9 @@ get_cluster_score <- function(scoot_object = NULL,
                                             black_list = black_list)
 
                       if (nrow(m) > 1) {
-                        res[[b_var]][[b]] <-
-                          get_scores(matrix = m,
-                                     cluster_labels = cluster_labels,
-                                     scores = scores,
-                                     dist_method = dist_method,
-                                     modularity_k = modularity_k,
-                                     max_nc = max_nc,
-                                     pam_nclusters = pam_nclusters,
-                                     hdbscan_min_pts = hdbscan_min_pts,
-                                     NbClust_method = NbClust_method,
-                                     ntests = ntests,
-                                     seed = seed,
-                                     title = paste(cluster_col,
-                                                   stringr::str_to_title(type),
-                                                   layer,
-                                                   i),
-                                     invisible = pca_pb_labs_invisible,
-                                     select_var = list(cos2 = pca_n_hvg))
+                        get_scores_args[c("feat_mat", "cluster_labels")] <-
+                          list(feat_mat = t(m), cluster_labels = cluster_labels)
+                        res[[b_var]][[b]] <- get_scores(get_scores_args)
                       }
                     }
                     for (score in scores) {
@@ -1462,6 +1417,7 @@ get_cluster_score <- function(scoot_object = NULL,
                   }
 
                   for (score in scores) {
+                    b_var_res_summary[[score]][["summary"]] <- stats::na.omit(b_var_res_summary[[score]][["summary"]])
                     b_var_res_summary[[score]][["summary"]] <-
                       mean(b_var_res_summary[[score]][["summary"]])
 
@@ -1499,6 +1455,7 @@ get_cluster_score <- function(scoot_object = NULL,
       names(results[[cluster_col]][[type]][[layer]]) <-
         names(scoot_object@aggregated_profile[[type]][[layer]])
     }
+    get_scores_args[["select_var"]] <- NULL
 
 
     ## Process signatures ###############################################
@@ -1519,43 +1476,37 @@ get_cluster_score <- function(scoot_object = NULL,
           function(i) {
             mat <- scoot_object@aggregated_profile[[type]][[layer]][, c("celltype", i, "scoot_sample"), with = FALSE]
 
+            get_scores_args[c("title", "invisible")] <-
+              list(title = paste(cluster_col,
+                                 stringr::str_to_title(type),
+                                 layer,
+                                 i),
+                   invisible = pca_sig_labs_invisible)
+
             if (cluster_by_drop_na) {
               mat <- mat %>% filter(scoot_sample %in% scoot_object@metadata[["scoot_sample"]])
             }
             mat <- mat %>%
               tidyr::pivot_wider(names_from = scoot_sample, values_from = i) %>%
               tibble::column_to_rownames(var = "celltype") %>%
-              replace(is.na(.), 0)
+              replace(is.na(.), 0) %>%
+              t() %>%
+              scale(center = TRUE,
+                    scale = TRUE)
 
-            if (ncol(mat) >= min_samples) {
+            if (nrow(mat) >= min_samples) {
               if (is.null(batching))  {
-                mat <- scale(mat,
-                             center = TRUE,
-                             scale = TRUE)
 
                 # Drop columns containing NAN, caused by scaling zero variance columns
                 mat <- mat[ , colSums(is.nan(mat)) == 0]
 
                 cluster_labels <- scoot_object@metadata %>%
-                  filter(scoot_sample %in% colnames(mat)) %>%
+                  filter(scoot_sample %in% row.names(mat)) %>%
                   .[[cluster_col]]
 
-                res <- get_scores(matrix = mat,
-                                  cluster_labels = cluster_labels,
-                                  scores = scores,
-                                  dist_method = dist_method,
-                                  modularity_k = modularity_k,
-                                  max_nc = max_nc,
-                                  pam_nclusters = pam_nclusters,
-                                  hdbscan_min_pts = hdbscan_min_pts,
-                                  NbClust_method = NbClust_method,
-                                  ntests = ntests,
-                                  seed = seed,
-                                  title = paste(cluster_col,
-                                                stringr::str_to_title(type),
-                                                layer,
-                                                i),
-                                  invisible = pca_sig_labs_invisible)
+                get_scores_args[c("feat_mat", "cluster_labels")] <-
+                  list(feat_mat = mat, cluster_labels = cluster_labels)
+                res <- get_scores(get_scores_args)
                 return(res)
               }
 
@@ -1567,35 +1518,22 @@ get_cluster_score <- function(scoot_object = NULL,
                     for (b in unique(scoot_object@metadata[[b_var]])) {
                       meta <- scoot_object@metadata %>%
                         dplyr::filter(get(b_var) == b) %>%
-                        dplyr::filter(scoot_sample %in% colnames(mat))
+                        dplyr::filter(scoot_sample %in% row.names(mat))
 
                       cluster_labels <- meta[[cluster_col]]
 
-                      m <- mat[ , colnames(mat) %in% as.character(meta[["scoot_sample"]])] %>%
+                      m <- mat[ , row.names(mat) %in% as.character(meta[["scoot_sample"]])] %>%
                         scale(center = TRUE,
                               scale = TRUE)
 
                       # Drop columns containing NAN, caused by scaling zero variance columns
                       m <- m[ , colSums(is.nan(m)) == 0]
 
-                      if (ncol(mat) >= min_samples) {
-                        res[[b_var]][[b]] <-
-                          get_scores(matrix = m,
-                                     cluster_labels = cluster_labels,
-                                     scores = scores,
-                                     dist_method = dist_method,
-                                     modularity_k = modularity_k,
-                                     max_nc = max_nc,
-                                     pam_nclusters = pam_nclusters,
-                                     hdbscan_min_pts = hdbscan_min_pts,
-                                     NbClust_method = NbClust_method,
-                                     ntests = ntests,
-                                     seed = seed,
-                                     title = paste(cluster_col,
-                                                   stringr::str_to_title(type),
-                                                   layer,
-                                                   i),
-                                     invisible = pca_sig_labs_invisible)
+                      if (ncol(m) >= min_samples) {
+                        get_scores_args[c("feat_mat", "cluster_labels")] <-
+                          list(feat_mat = m, cluster_labels = cluster_labels)
+                        res[[b_var]][[b]] <- get_scores(get_scores_args)
+
                         for (score in scores) {
                           b_var_res_summary[[score]][["summary"]] <- c(
                             b_var_res_summary[[score]][["summary"]],
@@ -1610,6 +1548,7 @@ get_cluster_score <- function(scoot_object = NULL,
                       }
 
                       for (score in scores) {
+                        b_var_res_summary[[score]][["summary"]] <- stats::na.omit(b_var_res_summary[[score]][["summary"]])
                         b_var_res_summary[[score]][["summary"]] <-
                           mean(b_var_res_summary[[score]][["summary"]])
 
@@ -1651,6 +1590,8 @@ get_cluster_score <- function(scoot_object = NULL,
     ggplot2::set_last_plot(NULL)
     invisible(gc())
   }
+
+  results[["data"]] <- data
 
   # Save user set parameters for summarize_cluster_scores
   results[["params"]][["cluster_by"]] <- cluster_by
@@ -1864,7 +1805,7 @@ summarize_cluster_scores <- function(data = NULL,
 
         df_pval_invert <- df
         df_pval <- df_pval_invert[, grepl(".p_value", names(df))]
-        df_pval <- 1 / (df_pval + 1e-16)
+        df_pval <- log10(1 / (df_pval + 1e-16))
         df_pval_invert[, grepl(".p_value", names(df))] <- df_pval
 
         plot_list[[n]] <- pheatmap::pheatmap(df_pval_invert,
