@@ -1,12 +1,10 @@
 #' Get a scoot object summarizing cell type classification and aggregated profiles.
 #'
-#' @param object A Seurat object or a list of Seurat objects
-#' @param group_by List or vector with one or multiple Seurat object metadata columns with cell type predictions to group by (e.g. layer 1 cell type classification)
-#' @param split_by A Seurat object metadata column to split by compositional data (e.g. sample names) \link{get_celltype_composition}
-#' @param min_cells_composition Parameter for internal \link{get_celltype_composition}. Minimum number of cells annotated in a group_by parameter to render the cell type composition. If the number of cells annotated for a certain group_by parameter is less, compositional data will not be rendered. Default value is 10.
-#' @param min_cells_aggregated Parameter for internal \link{get_aggregated_profile} and \link{get_aggregated_signature}. Minimum number of cells per sample and cell type to aggregate data for pseudobulk or aggregated signatures. Aggregated data for cell types with less than that value will not be returned in aggregated data. Default value is 10.
+#' @param object A Seurat object or a list of Seurat objects.
+#' @param ann_layer_cols List or vector with one or multiple Seurat object metadata columns with cell type annotations (e.g. layer 1 broad cell type annotation (CD4, CD8, ...) and layer 2 with high-resolution subtypes (CD4.treg, CD4.tfh, CD8.naive, CD8.exhausted, ...))
+#' @param min_cells Minimum number of cells for any annotated cell type in layer_1.
 #' @param name_additional_signatures Names of additional signatures as found in object metadata to take into account.
-#' @param useNA logical whether to return aggregated profile for NA (undefined) cell types, default is FALSE.
+#' @param useNA logical whether to return aggregated profile for NA (undefined) cell types.
 #' @param clr_zero_impute_perc Parameter for internal \link{get_celltype_composition}.
 #' @param layer_links Parameter for internal \link{get_celltype_composition}
 #' @param assay Parameter for internal \link{get_aggregated_profile}.
@@ -24,12 +22,10 @@
 
 
 scoot <- function(object,
-                  group_by = list("layer_1" = "scGate_multi",
-                                  "layer_2" = "functional.cluster"
+                  ann_layer_cols = list("layer_1" = "scGate_multi",
+                                        "layer_2" = "functional.cluster"
                   ),
-                  split_by = NULL,
-                  min_cells_composition = 10,
-                  min_cells_aggregated = 10,
+                  min_cells = 10,
                   name_additional_signatures = c("IFN_UCell", "HeatShock_UCell",
                                                  "cellCycle.G1S_UCell", "cellCycle.G2M_UCell"),
                   useNA = FALSE,
@@ -42,10 +38,35 @@ scoot <- function(object,
                   bparam = NULL,
                   progressbar = TRUE) {
 
-  args <- list(group_by,
-               split_by,
-               min_cells_composition,
-               min_cells_aggregated,
+  if (is.null(ann_layer_cols)) {
+    stop("Please provide at least one annotation column")
+  }
+
+  if (!is.list(ann_layer_cols)) {
+    ann_layer_cols <- as.list(ann_layer_cols)
+  }
+
+  # Run extended if object got scGate info
+  # Extract values from misc slot from object
+  if (any(ann_layer_cols == "scGate_multi")) {
+    if (is.null(name_additional_signatures)) {
+      name_additional_signatures <- c("IFN_UCell", "HeatShock_UCell",
+                                      "cellCycle.G1S_UCell", "cellCycle.G2M_UCell")
+    }
+  }
+
+  if (!is.numeric(min_cells) &
+      !length(min_cells) == 1) {
+    stop("Please provide an number for min_cells")
+  }
+
+  if (min_cells < 1) {
+    message("Please provide an number larger than 1 for min_cells. min_cells was changed to 1")
+    min_cells <- 1
+  }
+
+  args <- list(ann_layer_cols,
+               min_cells,
                name_additional_signatures,
                useNA,
                clr_zero_impute_perc,
@@ -55,10 +76,14 @@ scoot <- function(object,
 
   # if object is a single Seurat object, turn into a list
   if (!is.list(object)) {
-    scoot_list <- scoot_helper(object, group_by,
-                               split_by,
-                               min_cells_composition,
-                               min_cells_aggregated,
+    if (all(sapply(table(object[[ann_layer_cols[[1]]]]), function(x) {x < min_cells}))) {
+      message("Not enough annotated cells in object")
+      return(NULL)
+    }
+
+    scoot_list <- scoot_helper(object,
+                               ann_layer_cols,
+                               min_cells,
                                name_additional_signatures,
                                useNA,
                                clr_zero_impute_perc,
@@ -66,36 +91,43 @@ scoot <- function(object,
                                assay,
                                layer_1_link)
   } else {
+    if (is.null(names(object))) {
+      names(object) <- seq_along(object)
+    }
+    nams <- names(object)
+
     # set parallelization parameters
     param <- set_parallel_params(ncores = ncores,
                                  bparam = bparam,
                                  progressbar = progressbar)
 
-    scoot_list <- BiocParallel::bplapply(X = object,
+    scoot_list <- BiocParallel::bplapply(X = names(object),
                                          BPPARAM = param,
                                          function(x) {
+                                           if (all(sapply(table(object[[x]][[ann_layer_cols[[1]]]]), function(x) {x < min_cells}))) {
+                                             message(paste0("Not enough annotated cells in object ", x, ". Returning NULL."))
+                                             return(NULL)
+                                           }
+
                                            do.call(scoot_helper,
-                                                   c(x, args)
+                                                   c(object[[x]], args)
                                            )
                                          })
+    names(scoot_list) <- nams
   }
 
   return(scoot_list)
 }
 
 scoot_helper <- function(object,
-                         group_by = list("layer_1" = c("scGate_multi"),
-                                         "layer_2" = c("functional.cluster")
-                         ),
-                         split_by = NULL,
-                         min_cells_composition = 10,
-                         min_cells_aggregated = 10,
-                         name_additional_signatures = NULL,
-                         useNA = FALSE,
-                         clr_zero_impute_perc = 1,
-                         layer_links = c("scGate_multi" = "functional.cluster"),
-                         assay = "RNA",
-                         layer_1_link = "CellOntology_ID") {
+                         ann_layer_cols,
+                         min_cells,
+                         name_additional_signatures,
+                         useNA,
+                         clr_zero_impute_perc,
+                         layer_links,
+                         assay,
+                         layer_1_link) {
 
   if (is.null(object)) {
     stop("Please provide a Seurat object")
@@ -104,36 +136,19 @@ scoot_helper <- function(object,
   }
 
 
-  if (is.null(group_by)) {
-    stop("Please provide at least one grouping variable")
+  if (!any(ann_layer_cols %in% names(object@meta.data))) {
+    stop("ann_layer_cols ", paste(ann_layer_cols, collapse = ", "), " not found in metadata")
+  } else if (!all(ann_layer_cols %in% names(object@meta.data))) {
+    ann_layer_cols <- ann_layer_cols[ann_layer_cols %in% names(object@meta.data)]
+    message("Only found ", paste(ann_layer_cols, collapse = ", ") , " as grouping variable for scoot object.")
   }
 
-  if (!is.list(group_by)) {
-    group_by <- as.list(group_by)
-  }
-
-  if (!any(group_by %in% names(object@meta.data))) {
-    stop("group_by variables ", paste(group_by, collapse = ", "), " not found in metadata")
-  } else if (!all(group_by %in% names(object@meta.data))) {
-    group_by <- group_by[group_by %in% names(object@meta.data)]
-    message("Only found ", paste(group_by, collapse = ", ") , " as grouping variable for scoot object.")
-  }
-
-  for (v in seq_along(group_by)) {
-    if (is.null(names(group_by)[[v]]) || is.na(names(group_by)[[v]])) {
-      names(group_by)[[v]] <- paste0("layer", v)
+  for (v in seq_along(ann_layer_cols)) {
+    if (is.null(names(ann_layer_cols)[[v]]) || is.na(names(ann_layer_cols)[[v]])) {
+      names(ann_layer_cols)[[v]] <- paste0("layer", v)
     }
   }
 
-
-  # Run extended if object got scGate info
-  # Extract values from misc slot from object
-  if (any(group_by == "scGate_multi")) {
-    if (is.null(name_additional_signatures)) {
-      name_additional_signatures <- c("IFN_UCell", "HeatShock_UCell",
-                                      "cellCycle.G1S_UCell", "cellCycle.G2M_UCell")
-    }
-  }
 
   # Get unique metadata columns
   # Get metadata column names which have all the same value.
@@ -148,9 +163,8 @@ scoot_helper <- function(object,
   # message("\nComputing cell type composition...\n")
 
   comp_prop <- get_celltype_composition(object,
-                                        group_by_composition = group_by,
-                                        min_cells_composition = min_cells_composition,
-                                        split_by = split_by,
+                                        ann_layer_cols = ann_layer_cols,
+                                        min_cells_composition = min_cells,
                                         useNA = useNA,
                                         clr_zero_impute_perc = clr_zero_impute_perc,
                                         layer_1_link = layer_1_link,
@@ -159,14 +173,14 @@ scoot_helper <- function(object,
   # message("\nComputing aggregated profile...\n")
 
   avg_expr <- get_aggregated_profile(object,
-                                     group_by_aggregated = group_by,
-                                     min_cells_aggregated = min_cells_aggregated,
+                                     ann_layer_cols = ann_layer_cols,
+                                     min_cells_aggregated = min_cells,
                                      assay = assay,
                                      useNA = useNA)
 
   aggr_sig <- get_aggregated_signature(object,
-                                       group_by_aggregated = group_by,
-                                       min_cells_aggregated = min_cells_aggregated,
+                                       ann_layer_cols = ann_layer_cols,
+                                       min_cells_aggregated = min_cells,
                                        name_additional_signatures = name_additional_signatures,
                                        useNA = useNA)
 
@@ -183,10 +197,10 @@ scoot_helper <- function(object,
 #' Calculate cell type composition or frequencies
 #'
 #' @param object A seurat object
-#' @param group_by_composition The Seurat object metadata column(s) containing celltype annotations (provide as character vector, containing the metadata column name(s))
+#' @param ann_layer_cols The Seurat object metadata column(s) containing celltype annotations (provide as character vector, containing the metadata column name(s))
 #' @param split_by A Seurat object metadata column to split by (e.g. sample names)
 #' @param min_cells_composition Set a minimum threshold for number of cells to calculate relative abundance (e.g. less than 10 cells -> no relative abundance will be calculated)
-#' @param useNA Whether to include not annotated cells or not (labelled as "NA" in the group_by_composition). Can be defined separately for each group_by_composition (provide single boolean or vector of booleans)
+#' @param useNA Whether to include not annotated cells or not (labelled as "NA" in the ann_layer_cols). Can be defined separately for each ann_layer_cols (provide single boolean or vector of booleans)
 #' @param layer_links Named vector indicating the relation of multiple layer classification, default is \code{c("scGate_multi", "functional.cluster")}. Name of the vector element ought to be layer_1 and element layer_2. This parameter is used to compute relative compositional data of layer_2 within layer_1 classes.
 #' @param clr_zero_impute_perc To calculate the clr-transformed relative abundance ("clr_freq"), zero values are not allowed and need to be imputed (e.g. by adding a pseudo cell count). Instead of adding a pseudo cell count of flat +1, here a pseudo cell count of +1% of the total cell count will be added to all cell types, to better take into consideration the relative abundance ratios (e.g. adding +1 cell to a total cell count of 10 cells would have a different, i.e. much larger effect, than adding +1 to 1000 cells).
 #' @param layer_1_link Column of metadata linking layer_1 prediction (e.g. scGate ~ CellOntology_ID) in order to perform subsetting for second layer classification.
@@ -208,14 +222,14 @@ scoot_helper <- function(object,
 #' data("panc8")
 #' panc8 = UpdateSeuratObject(object = panc8)
 #' # Calculate overall composition
-#' celltype_compositions.overall <- get_celltype_composition(object = panc8, group_by_composition = "celltype")
+#' celltype_compositions.overall <- get_celltype_composition(object = panc8, ann_layer_cols = "celltype")
 #'
 #' # Calculate sample-wise composition
 
-#' celltype_compositions.sample_wise <- get_celltype_composition(object = panc8, group_by_composition = "celltype", split_by = "orig.ident")
+#' celltype_compositions.sample_wise <- get_celltype_composition(object = panc8, ann_layer_cols = "celltype", split_by = "orig.ident")
 #'
 get_celltype_composition <- function(object = NULL,
-                                     group_by_composition = NULL,
+                                     ann_layer_cols = NULL,
                                      split_by = NULL,
                                      min_cells_composition = 10,
                                      useNA = FALSE,
@@ -238,8 +252,8 @@ get_celltype_composition <- function(object = NULL,
     stop("Not Seurat object or dataframe included, cannot be processed.\n")
   }
 
-  if (is.null(group_by_composition)) {
-    stop("Please specificy a group_by_composition variable")
+  if (is.null(ann_layer_cols)) {
+    stop("Please specificy an ann_layer_cols variable")
   }
 
   # Assess wheter split_by variable is in metadata
@@ -249,21 +263,21 @@ get_celltype_composition <- function(object = NULL,
   }
 
   if (length(useNA) != 1 &&
-      length(useNA) != length(group_by_composition)) {
-    stop("useNA variable must be of length 1 or the same length as group_by_composition (group_by)")
+      length(useNA) != length(ann_layer_cols)) {
+    stop("useNA variable must be of length 1 or the same length as ann_layer_cols")
   }
 
-  # convert group_by_composition to list if not
-  if (!is.list(group_by_composition)) {
-    group_by_composition <- as.list(group_by_composition)
+  # convert ann_layer_cols to list if not
+  if (!is.list(ann_layer_cols)) {
+    ann_layer_cols <- as.list(ann_layer_cols)
   }
 
 
-  # Rename group_by_composition if not indicated
-  for (v in seq_along(group_by_composition)) {
-    if (is.null(names(group_by_composition)[[v]]) ||
-        is.na(names(group_by_composition)[[v]])) {
-      names(group_by_composition)[[v]] <- group_by_composition[[v]]
+  # Rename ann_layer_cols if not indicated
+  for (v in seq_along(ann_layer_cols)) {
+    if (is.null(names(ann_layer_cols)[[v]]) ||
+        is.na(names(ann_layer_cols)[[v]])) {
+      names(ann_layer_cols)[[v]] <- ann_layer_cols[[v]]
     }
 
   }
@@ -271,50 +285,50 @@ get_celltype_composition <- function(object = NULL,
 
 
   # Keep only grouping variables in metadata
-  if (!any(group_by_composition %in% names(meta.data))) {
-    stop("group_by variables ", paste(group_by_composition, collapse = ", "), " not found in metadata")
-  } else if (!all(group_by_composition %in% names(meta.data))) {
-    group_present <- group_by_composition %in% names(meta.data)
+  if (!any(ann_layer_cols %in% names(meta.data))) {
+    stop("ann_layer_cols ", paste(ann_layer_cols, collapse = ", "), " not found in metadata")
+  } else if (!all(ann_layer_cols %in% names(meta.data))) {
+    group_present <- ann_layer_cols %in% names(meta.data)
     # accommodate useNA vector
-    if (length(useNA) == length(group_by_composition)) {
+    if (length(useNA) == length(ann_layer_cols)) {
       useNA <- useNA[group_present]
 
     }
     # keep only grouping variables found in metadata
-    group_by_composition <- group_by_composition[group_present]
-    message("Only found ", paste(group_by_composition, collapse = ", ") , " as grouping variables.")
+    ann_layer_cols <- ann_layer_cols[group_present]
+    message("Only found ", paste(ann_layer_cols, collapse = ", ") , " as grouping variables.")
   }
 
   # Factorize cell type to keep all in compositional data
   meta.data <- meta.data %>%
-    dplyr::mutate_at(unlist(group_by_composition), as.factor)
+    dplyr::mutate_at(unlist(ann_layer_cols), as.factor)
 
-  # evaluate which layers are included in group_by_composition and layer_links
+  # evaluate which layers are included in ann_layer_cols and layer_links
   for (l in seq_along(layer_links)) {
     if (!all(c(names(layer_links[l]), layer_links[l]) %in%
-             group_by_composition)) {
+             ann_layer_cols)) {
       message("Not computing relative proportion values of layer_2 within layer_1 for ",
               paste0(names(layer_links[l]), " -> ", layer_links[l]))
     }
   }
 
 
-  # Rep useNa parameters according to group_by_composition variable
+  # Rep useNa parameters according to ann_layer_cols variable
   if (length(useNA) == 1) {
-    useNA <- rep(useNA, length(group_by_composition))
+    useNA <- rep(useNA, length(ann_layer_cols))
   }
 
   # list to store compositions
   celltype_compositions <- list()
 
 
-  for (i in seq_along(group_by_composition)) {
+  for (i in seq_along(ann_layer_cols)) {
 
     suppressMessages(
       {
         ctable <- compositional_data(data = meta.data,
                                      split_by = split_by,
-                                     group_by_1 = group_by_composition[[i]],
+                                     ann_layer_col_1 = ann_layer_cols[[i]],
                                      useNA = useNA[i],
                                      clr_zero_impute_perc = clr_zero_impute_perc)
 
@@ -324,13 +338,13 @@ get_celltype_composition <- function(object = NULL,
           ctable <- ctable[0,]
         }
         # get proportion relative to layer_1 types
-        if (group_by_composition[[i]] %in% layer_links) {
+        if (ann_layer_cols[[i]] %in% layer_links) {
           # stop if very few cells
           if (sum(ctable$cell_counts) < min_cells_composition) {
             # Return empty list
             ctable <- list()
           } else {
-            lay <- layer_links[which(layer_links == group_by_composition[[i]])]
+            lay <- layer_links[which(layer_links == ann_layer_cols[[i]])]
             if (lay %in% names(object@misc$layer2_param)) {
               meta_split <- split(meta.data,
                                   meta.data[[names(lay)]])
@@ -362,7 +376,7 @@ get_celltype_composition <- function(object = NULL,
               ctable_split <- lapply(meta_split,
                                      compositional_data,
                                      split_by = split_by,
-                                     group_by_1 = group_by_composition[[i]],
+                                     ann_layer_col_1 = ann_layer_cols[[i]],
                                      useNA = useNA[i])
 
               # If not enough cells, return empty dataframe
@@ -380,7 +394,7 @@ get_celltype_composition <- function(object = NULL,
       })
 
     ## Append
-    celltype_compositions[[names(group_by_composition)[i]]] <- ctable
+    celltype_compositions[[names(ann_layer_cols)[i]]] <- ctable
   }
 
   return(celltype_compositions)
@@ -395,7 +409,7 @@ get_celltype_composition <- function(object = NULL,
 #'
 #'
 #' @param object A seurat object or a list of seurat objects
-#' @param group_by_aggregated The Seurat object metadata column(s) containing celltype annotations
+#' @param ann_layer_cols The Seurat object metadata column(s) containing celltype annotations
 #' @param min_cells_aggregated Minimum number of cells per sample and cell type to aggregate data for pseudobulk or aggregated signatures. Aggregated data for cell types with less than that value will not be returned in aggregated data. Default value is 10.
 #' @param assay Assay to retrieve information. By default "RNA".
 #' @param ... Extra parameters for internal Seurat functions: AverageExpression, AggregateExpression, FindVariableFeatures
@@ -407,7 +421,7 @@ get_celltype_composition <- function(object = NULL,
 
 
 get_aggregated_profile <- function(object,
-                                   group_by_aggregated = NULL,
+                                   ann_layer_cols = NULL,
                                    min_cells_aggregated = 10,
                                    assay = "RNA",
                                    ...) {
@@ -419,40 +433,40 @@ get_aggregated_profile <- function(object,
     }
   }
 
-  if (is.null(group_by_aggregated)) {
-    stop("Please specificy a group_by_aggregated variable")
+  if (is.null(ann_layer_cols)) {
+    stop("Please specificy an ann_layer_cols variable")
   }
 
-  # convert group_by_aggregated to list if not
-  if (!is.list(group_by_aggregated)) {
-    group_by_aggregated <- as.list(group_by_aggregated)
+  # convert ann_layer_cols to list if not
+  if (!is.list(ann_layer_cols)) {
+    ann_layer_cols <- as.list(ann_layer_cols)
   }
 
-  # Rename group_by_aggregated if not indicated
-  for (v in seq_along(group_by_aggregated)) {
-    if (is.null(names(group_by_aggregated)[[v]]) || is.na(names(group_by_aggregated)[[v]])) {
-      names(group_by_aggregated)[[v]] <- group_by_aggregated[[v]]
+  # Rename ann_layer_cols if not indicated
+  for (v in seq_along(ann_layer_cols)) {
+    if (is.null(names(ann_layer_cols)[[v]]) || is.na(names(ann_layer_cols)[[v]])) {
+      names(ann_layer_cols)[[v]] <- ann_layer_cols[[v]]
     }
   }
 
-  if (!any(group_by_aggregated %in% names(object@meta.data))) {
-    stop("group_by variables ", paste(group_by_aggregated, collapse = ", "), " not found in metadata")
-  } else if (!all(group_by_aggregated %in% names(object@meta.data))) {
-    group_by_aggregated <- group_by_aggregated[group_by_aggregated %in% names(object@meta.data)]
-    message("Only found ", paste(group_by_aggregated, collapse = ", ") , " as grouping variables.")
+  if (!any(ann_layer_cols %in% names(object@meta.data))) {
+    stop("ann_layer_cols ", paste(ann_layer_cols, collapse = ", "), " not found in metadata")
+  } else if (!all(ann_layer_cols %in% names(object@meta.data))) {
+    ann_layer_cols <- ann_layer_cols[ann_layer_cols %in% names(object@meta.data)]
+    message("Only found ", paste(ann_layer_cols, collapse = ", ") , " as grouping variables.")
   }
 
 
   avg_exp <- list()
 
   # loop over different grouping
-  for (i in names(group_by_aggregated)) {
+  for (i in names(ann_layer_cols)) {
 
     # compute pseudobulk
     suppressWarnings({
 
       # Calculate total (sample) pseudobulks
-      if (i == names(group_by_aggregated)[1]) {
+      if (i == names(ann_layer_cols)[1]) {
 
         # Calculate pseudobulk for ALL cells in sample
         avg_exp[[i]] <- object@assays[["RNA"]]["counts"]
@@ -464,7 +478,7 @@ get_aggregated_profile <- function(object,
 
         # Calculate pseudobulk for annotated cells in sample
         # Subset to remove not annotated cells
-        obj <- object[, which(!is.na(object[[group_by_aggregated[[i]]]]))]
+        obj <- object[, which(!is.na(object[[ann_layer_cols[[i]]]]))]
 
         # Calculate pseudobulk of all annotated cells
         mat <- obj@assays[["RNA"]]["counts"]
@@ -478,7 +492,7 @@ get_aggregated_profile <- function(object,
 
         # Calculate pseudobulk for not annotated cells in sample
         # Subset to remove annotated cells
-        obj <- object[, which(is.na(object[[group_by_aggregated[[i]]]]))]
+        obj <- object[, which(is.na(object[[ann_layer_cols[[i]]]]))]
 
         # Calculate pseudobulk of all annotated cells
         mat <- obj@assays[["RNA"]]["counts"]
@@ -539,7 +553,7 @@ get_aggregated_profile <- function(object,
 #'
 #'
 #' @param object A seurat object or metadata data frame.
-#' @param group_by_aggregated The Seurat object metadata column(s) containing celltype annotations (idents).
+#' @param ann_layer_cols The Seurat object metadata column(s) containing celltype annotations (idents).
 #' @param min_cells_aggregated Minimum number of cells per sample and cell type to aggregate data for pseudobulk or aggregated signatures. Aggregated data for cell types with less than that value will not be returned in aggregated data. Default value is 10.
 #' @param name_additional_signatures Names of additional signatures to compute the aggregation per cell type.
 #' @param fun Function to aggregate the signature, e.g. mean or sum.
@@ -551,7 +565,7 @@ get_aggregated_profile <- function(object,
 
 
 get_aggregated_signature <- function(object,
-                                     group_by_aggregated = NULL,
+                                     ann_layer_cols = NULL,
                                      min_cells_aggregated = 10,
                                      name_additional_signatures = NULL,
                                      fun = mean,
@@ -571,28 +585,28 @@ get_aggregated_signature <- function(object,
   }
 
 
-  if (is.null(group_by_aggregated)) {
-    stop("Please specificy a group_by_aggregated variable")
+  if (is.null(ann_layer_cols)) {
+    stop("Please specificy an ann_layer_cols variable")
   }
 
-  # convert group_by_aggregated to list if not
-  if (!is.list(group_by_aggregated)) {
-    group_by_aggregated <- as.list(group_by_aggregated)
+  # convert ann_layer_cols to list if not
+  if (!is.list(ann_layer_cols)) {
+    ann_layer_cols <- as.list(ann_layer_cols)
   }
 
-  # Rename group_by_aggregated if not indicated
-  for (v in seq_along(group_by_aggregated)) {
-    if (is.null(names(group_by_aggregated)[[v]]) ||
-        is.na(names(group_by_aggregated)[[v]])) {
-      names(group_by_aggregated)[[v]] <- group_by_aggregated[[v]]
+  # Rename ann_layer_cols if not indicated
+  for (v in seq_along(ann_layer_cols)) {
+    if (is.null(names(ann_layer_cols)[[v]]) ||
+        is.na(names(ann_layer_cols)[[v]])) {
+      names(ann_layer_cols)[[v]] <- ann_layer_cols[[v]]
     }
   }
 
-  if (!any(group_by_aggregated %in% names(meta.data))) {
-    stop("group_by variables ", paste(group_by_aggregated, collapse = ", "), " not found in metadata")
-  } else if (!all(group_by_aggregated %in% names(meta.data))) {
-    group_by_aggregated <- group_by_aggregated[group_by_aggregated %in% names(meta.data)]
-    message("Only found ", paste(group_by_aggregated, collapse = ", ") , " as grouping variable.")
+  if (!any(ann_layer_cols %in% names(meta.data))) {
+    stop("ann_layer_cols ", paste(ann_layer_cols, collapse = ", "), " not found in metadata")
+  } else if (!all(ann_layer_cols %in% names(meta.data))) {
+    ann_layer_cols <- ann_layer_cols[ann_layer_cols %in% names(meta.data)]
+    message("Only found ", paste(ann_layer_cols, collapse = ", ") , " as grouping variable.")
   }
 
   if (is.null(name_additional_signatures)) {
@@ -615,10 +629,10 @@ get_aggregated_signature <- function(object,
 
       aggr_sig <- list()
 
-      for (e in names(group_by_aggregated)) {
+      for (e in names(ann_layer_cols)) {
         # remove from aggregated data cell with less than min_cells_aggregated
         cnts <- compositional_data(meta.data,
-                                   group_by_1 = group_by_aggregated[[e]],
+                                   ann_layer_col_1 = ann_layer_cols[[e]],
                                    only_counts = TRUE,
                                    useNA = useNA)
 
@@ -627,14 +641,14 @@ get_aggregated_signature <- function(object,
 
 
         aggr_sig[[e]] <- meta.data %>%
-          dplyr::filter(.data[[group_by_aggregated[[e]]]] %in% keep) %>%
-          dplyr::group_by(.data[[group_by_aggregated[[e]]]]) %>%
+          dplyr::filter(.data[[ann_layer_cols[[e]]]] %in% keep) %>%
+          dplyr::group_by(.data[[ann_layer_cols[[e]]]]) %>%
           dplyr::summarize_at(add_sig_cols, fun, na.rm = TRUE)
 
         # filter out NA if useNA=F
         if (!useNA) {
           aggr_sig[[e]] <- aggr_sig[[e]] %>%
-            dplyr::filter(!is.na(.data[[group_by_aggregated[[e]]]]))
+            dplyr::filter(!is.na(.data[[ann_layer_cols[[e]]]]))
         }
 
         colnames(aggr_sig[[e]])[1] <- "celltype"
@@ -956,7 +970,6 @@ get_cluster_score <- function(scoot_object = NULL,
                               pca_sig_labs_invisible = c("quali"),
 
                               # Pseudobulk params
-                              ndim = 10,
                               nvar_genes = 500,
                               black_list = NULL,
                               pca_n_hvg = 20,
@@ -1632,7 +1645,7 @@ summarize_cluster_scores <- function(data = NULL,
                                      p_adjust_method = "fdr",
                                      p_value_cutoff = 0.05) {
 
-  show.variables <- c(".summary", ".n", ".p_value")
+  show_variables <- c(".summary", ".n", ".p_value")
 
   if (is.null(data)) {
     message("Please provide scores object (output from get_cluster_scores)")
@@ -1647,7 +1660,7 @@ summarize_cluster_scores <- function(data = NULL,
   data_conts <- unlist(data)
   df_pars <- list()
 
-  for (par in show.variables) {
+  for (par in show_variables) {
     data_conts_temp <- data_conts[endsWith(names(data_conts), par)]
 
     if (!is.null(batching)) {
@@ -1657,7 +1670,7 @@ summarize_cluster_scores <- function(data = NULL,
     }
 
     if (length(data_conts_temp) == 0) {
-      stop("Error happened at ", show.variables, ". No values left after filtering.")
+      stop("Error happened at ", show_variables, ". No values left after filtering.")
     } else {
       target_string <- paste0(scores, collapse = "|")
       target_string <- paste0("(", target_string, "+)")
@@ -1688,15 +1701,15 @@ summarize_cluster_scores <- function(data = NULL,
     colnames(df_pars[[".n"]]) <- "n"
   }
 
-  df <- merge(df_pars[[show.variables[1]]],
-              df_pars[[show.variables[2]]],
+  df <- merge(df_pars[[show_variables[1]]],
+              df_pars[[show_variables[2]]],
               by = "row.names",
               all = TRUE)
   row.names(df) <- df$Row.names
   df$Row.names <- NULL
 
   df <- merge(df,
-              df_pars[[show.variables[3]]],
+              df_pars[[show_variables[3]]],
               by = "row.names",
               all = TRUE)
   row.names(df) <- df$Row.names

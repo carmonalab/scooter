@@ -6,7 +6,7 @@
 \usage{
 get_celltype_composition(
   object = NULL,
-  group_by_composition = NULL,
+  ann_layer_cols = NULL,
   split_by = NULL,
   min_cells_composition = 10,
   useNA = FALSE,
@@ -18,13 +18,13 @@ get_celltype_composition(
 \arguments{
 \item{object}{A seurat object}
 
-\item{group_by_composition}{The Seurat object metadata column(s) containing celltype annotations (provide as character vector, containing the metadata column name(s))}
+\item{ann_layer_cols}{The Seurat object metadata column(s) containing celltype annotations (provide as character vector, containing the metadata column name(s))}
 
 \item{split_by}{A Seurat object metadata column to split by (e.g. sample names)}
 
 \item{min_cells_composition}{Set a minimum threshold for number of cells to calculate relative abundance (e.g. less than 10 cells -> no relative abundance will be calculated)}
 
-\item{useNA}{Whether to include not annotated cells or not (labelled as "NA" in the group_by_composition). Can be defined separately for each group_by_composition (provide single boolean or vector of booleans)}
+\item{useNA}{Whether to include not annotated cells or not (labelled as "NA" in the ann_layer_cols). Can be defined separately for each ann_layer_cols (provide single boolean or vector of booleans)}
 
 \item{layer_links}{Named vector indicating the relation of multiple layer classification, default is \code{c("scGate_multi", "functional.cluster")}. Name of the vector element ought to be layer_1 and element layer_2. This parameter is used to compute relative compositional data of layer_2 within layer_1 classes.}
 
@@ -46,9 +46,9 @@ InstallData("panc8")
 data("panc8")
 panc8 = UpdateSeuratObject(object = panc8)
 # Calculate overall composition
-celltype_compositions.overall <- get_celltype_composition(object = panc8, group_by_composition = "celltype")
+celltype_compositions.overall <- get_celltype_composition(object = panc8, ann_layer_cols = "celltype")
 
 # Calculate sample-wise composition
-celltype_compositions.sample_wise <- get_celltype_composition(object = panc8, group_by_composition = "celltype", split_by = "orig.ident")
+celltype_compositions.sample_wise <- get_celltype_composition(object = panc8, ann_layer_cols = "celltype", split_by = "orig.ident")
 
 }

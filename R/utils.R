@@ -47,12 +47,12 @@ set_parallel_params <- function(ncores,
 
 compositional_data <- function(data,
                                split_by = NULL,
-                               group_by_1 = NULL,
+                               ann_layer_col_1 = NULL,
                                useNA = FALSE,
                                clr_zero_impute_perc = 1,
                                only_counts = FALSE) {
 
-  if (all(is.na(data[[group_by_1]]))) {
+  if (all(is.na(data[[ann_layer_col_1]]))) {
     if (!only_counts) {
       ctable <- data.frame("celltype" = character(),
                            "cell_counts" = integer(),
@@ -65,7 +65,7 @@ compositional_data <- function(data,
     return(ctable)
   } else {
     # set grouping variables
-    gr_vars <- c(split_by, group_by_1)
+    gr_vars <- c(split_by, ann_layer_col_1)
     gr_vars2 <- c(split_by)
 
     ctable <- data %>%

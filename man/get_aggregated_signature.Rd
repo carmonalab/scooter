@@ -6,7 +6,7 @@
 \usage{
 get_aggregated_signature(
   object,
-  group_by_aggregated = NULL,
+  ann_layer_cols = NULL,
   min_cells_aggregated = 10,
   name_additional_signatures = NULL,
   fun = mean,
@@ -16,7 +16,7 @@ get_aggregated_signature(
 \arguments{
 \item{object}{A seurat object or metadata data frame.}
 
-\item{group_by_aggregated}{The Seurat object metadata column(s) containing celltype annotations (idents).}
+\item{ann_layer_cols}{The Seurat object metadata column(s) containing celltype annotations (idents).}
 
 \item{min_cells_aggregated}{Minimum number of cells per sample and cell type to aggregate data for pseudobulk or aggregated signatures. Aggregated data for cell types with less than that value will not be returned in aggregated data. Default value is 10.}
 
