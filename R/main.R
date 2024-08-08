@@ -1039,6 +1039,49 @@ get_cluster_score <- function(scoot_object = NULL,
 
 
   # Process data ###############################################
+
+  ## Pre-process data ###############################################
+  data <- get_cluster_score_pre_proc(scoot_object,
+                                     cluster_by_drop_na,
+                                     min_samples,
+                                     dist_method,
+                                     nvar_genes = nvar_genes,
+                                     cluster_by = 1,
+                                     black_list)
+
+
+  ## Unsupervised ###############################################
+  # message("\nUnsupervised analysis\n")
+  #
+  # clust_args <- list(max_nc_adj = max_nc_adj,
+  #                    fviz_nbclust_method = "silhouette",
+  #                    nclust = "auto")
+  #
+  # message("\nProcessing cell type composition\n")
+  #
+  # comp_layers <- names(data[["composition"]])
+  #
+  # for (layer in comp_layers) {
+  #   if (layer == comp_layers[1]) {
+  #     df <- data[["composition"]][["feature_matrix"]]
+  #
+  #     cluster_labels <- do.call(clust_method, clust_args)
+  #   }
+  # }
+
+
+  ## Supervised ###############################################
+  message("\nSupervised analysis\n")
+
+  get_scores_args <- list(scores = scores,
+                          dist_method = dist_method,
+                          knn_k = knn_k,
+                          max_nc = max_nc,
+                          n_clust = n_clust,
+                          NbClust_method = NbClust_method,
+                          ntests = ntests,
+                          seed = seed)
+
   for (cluster_col in cluster_by) {
     message("Processing ", cluster_col)
 

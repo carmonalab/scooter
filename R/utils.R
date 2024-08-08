@@ -33,7 +33,7 @@ set_parallel_params <- function(ncores,
       param <- BiocParallel::MulticoreParam(workers =  ncores,
                                             progressbar = progressbar)
     } else {
-      param <- BiocParallel::SerialParam()
+      param <- BiocParallel::SerialParam(progressbar = progressbar)
     }
   } else {
     param <- bparam
@@ -122,6 +122,276 @@ compositional_data <- function(data,
 
 
 # get_cluster_score helper functions ##############################################################################
+
+filter_feat_dist <- function(df,
+                             min_samples,
+                             dist_method) {
+  if (nrow(df) >= min_samples) {
+    d <- list()
+    d[["feature_matrix"]] <- df
+    dist_mat <- stats::dist(df, method = dist_method)
+    d[["distance_matrix"]] <- as.matrix(dist_mat)
+    return(d)
+  } else {
+    return(NULL)
+  }
+}
+
+
+pre_proc_comp <- function(df_comp,
+                          min_samples,
+                          dist_method) {
+  df <- df_comp %>%
+    tidyr::pivot_wider(names_from = scoot_sample,
+                       values_from = clr) %>%
+    stats::na.omit() %>%
+    tibble::column_to_rownames(var = "celltype") %>%
+    t() %>%
+    scale(center = TRUE,
+          scale = FALSE)
+
+  feat_dist_list <- filter_feat_dist(df, min_samples, dist_method)
+  return(feat_dist_list)
+}
+
+get_cluster_score_pre_proc <- function(scoot_object,
+                                       cluster_by_drop_na,
+                                       min_samples,
+                                       dist_method,
+                                       nvar_genes,
+                                       cluster_by,
+                                       black_list) {
+
+  data <- list()
+
+  ## Process celltype composition ###############################################
+  type <- "composition"
+
+  comp_layers <- names(scoot_object@composition)
+
+  for (layer in comp_layers) {
+
+    if (inherits(scoot_object@composition[[layer]], "data.frame")) {
+      df <- scoot_object@composition[[layer]][, c("celltype", "clr", "scoot_sample"), with = FALSE]
+      if (cluster_by_drop_na) {
+        df <- df %>% filter(scoot_sample %in% scoot_object@metadata[["scoot_sample"]])
+      }
+      data[[type]][[layer]] <- pre_proc_comp(as.data.frame(df), min_samples, dist_method)
+
+    } else if (is.list(scoot_object@composition[[layer]])) {
+      data[[type]][[layer]] <- sapply(
+        names(scoot_object@composition[[layer]]),
+        function(i) {
+          df <- scoot_object@composition[[layer]][[i]][, c("celltype", "clr", "scoot_sample"), with = F]
+          if (cluster_by_drop_na) {
+            df <- df %>% filter(scoot_sample %in% scoot_object@metadata[["scoot_sample"]])
+          }
+          pre_proc_comp(as.data.frame(df), min_samples, dist_method)
+        }, simplify = FALSE, USE.NAMES = TRUE
+      )
+    }
+  }
+
+
+  ## Process pseudobulk ###############################################
+  type <- "pseudobulk"
+
+  pb_layers <- names(scoot_object@aggregated_profile[[type]])
+
+  # Get black list
+  if (is.null(black_list)) {
+    black_list <- default_black_list
+  }
+  black_list <- unlist(black_list)
+
+  for (layer in pb_layers) {
+    data[[type]][[layer]] <- sapply(
+      names(scoot_object@aggregated_profile[[type]][[layer]]),
+      function(i) {
+        mat <- as.matrix(scoot_object@aggregated_profile[[type]][[layer]][[i]])
+        if (cluster_by_drop_na) {
+          mat <- mat[, colnames(mat) %in% as.character(scoot_object@metadata[["scoot_sample"]])]
+        }
+        if (length(mat) == 0 || !is.matrix(mat)) {
+          return(NULL)
+        }
+        # Remove black listed genes from the matrix
+        mat <- mat[!row.names(mat) %in% black_list,]
+
+        meta <- scoot_object@metadata %>%
+          dplyr::filter(scoot_sample %in% colnames(mat))
+
+        mat <- DESeq2.normalize(matrix = mat,
+                                metadata = meta,
+                                cluster_by = cluster_by,
+                                nvar_genes = nvar_genes,
+                                black_list = black_list)
+
+        mat <- t(mat)
+        d <- filter_feat_dist(mat, min_samples, dist_method)
+        if (!is.null(d)) {
+          d[["feature_matrix"]] <- t(d[["feature_matrix"]])
+        }
+        return(d)
+      }, simplify = FALSE, USE.NAMES = TRUE
+    )
+  }
+
+
+  ## Process signatures ###############################################
+  type <- "signatures"
+
+  sig_layers <- names(scoot_object@aggregated_profile[[type]])
+
+  if (!is.null(sig_layers)) {
+    for (layer in sig_layers) {
+      cols <- colnames(scoot_object@aggregated_profile[[type]][[layer]])
+      signatures <- cols[!cols %in% c("celltype", "scoot_sample")]
+
+      data[[type]][[layer]] <- lapply(
+        signatures,
+        function(i) {
+          df <- scoot_object@aggregated_profile[[type]][[layer]][, c("celltype", i, "scoot_sample"), with = FALSE]
+          if (cluster_by_drop_na) {
+            df <- df %>% filter(scoot_sample %in% scoot_object@metadata[["scoot_sample"]])
+          }
+          df <- df %>%
+            tidyr::pivot_wider(names_from = scoot_sample,
+                               values_from = i) %>%
+            tibble::column_to_rownames(var = "celltype") %>%
+            replace(is.na(.), 0) %>%
+            t() %>%
+            scale(center = TRUE,
+                  scale = TRUE) %>%
+            as.data.frame() %>%
+            select_if(~ !any(is.na(.)))
+          filter_feat_dist(df, min_samples, dist_method)
+        }
+      )
+      names(data[[type]][[layer]]) <- signatures
+    }
+  }
+
+  return(data)
+}
+
+# Unsupervised clustering ###############################################
+
+## Hierarchical clustering ###############################################
+#' @importFrom factoextra fviz_pca fviz_nbclust
+
+h_clust_nclust <- function(df,
+                           max_nc_adj = 5,
+                           NbClust_method = "ward.D2") {
+
+  # Methods commonly throwing errors or not creating specific Best.nc are commented out
+  indeces <- c("kl", "ch", "hartigan",
+               # "ccc", "scott", "marriot", "trcovw", "tracew", "friedman", "rubin",
+               "cindex", "db", "silhouette", "duda", "pseudot2",
+               # "beale",
+               "ratkowsky", "ball", "ptbiserial", "gap",
+               # "frey",
+               "mcclain", "gamma", "gplus", "tau", "dunn",
+               # "hubert",
+               "sdindex",
+               # "dindex",
+               "sdbw")
+
+  # Determine the optimal number of clusters
+  clust_results <- sapply(indeces, function(x) {
+    tryCatch({
+      fastNbClust(data = df,
+                  min.nc = 1,
+                  max.nc = max_nc_adj,
+                  method = NbClust_method,
+                  index = x)
+    }, error = function(e) {
+      return(NULL)
+    })
+  })
+
+  clust_results[sapply(clust_results, is.null)] <- NULL
+
+  nclust_table <- clust_results %>%
+    sapply(function(x) x[["Best.nc"]][["Number_clusters"]]) %>%
+    unlist() %>%
+    table()
+
+  nclust <- nclust_table %>%
+    which.max() %>%
+    nclust_table[.] %>%
+    names() %>%
+    as.numeric()
+
+  results <- list(nclust = nclust,
+                  clust_results = clust_results)
+
+  return(results)
+}
+
+
+h_clust <- function(df,
+                    max_nc_adj = 5,
+                    NbClust_method = "ward.D2",
+                    nclust = "auto") {
+
+  hier_clust_res <- hier_clust_nclust(df, max_nc_adj, NbClust_method)
+  clust_results <- hier_clust_res[["clust_results"]]
+  if (nclust == "auto") {
+    nclust <- hier_clust_res[["nclust"]]
+  }
+
+  # From the methods that agree on the number of clusters
+  clust_results_filtered <- clust_results[sapply(clust_results, function(x) x[["Best.nc"]][["Number_clusters"]] == nclust)]
+
+  # Get clustering for each method
+  cluster_labels_df <- clust_results_filtered %>%
+    sapply(function(x) x[["Best.partition"]])
+
+  if (nclust == 1) {
+    cluster_labels <- rep(1, nrow(df))
+  } else {
+    # For each method (column) get consensus cluster assignment
+    cluster_labels_unsup <- apply(cluster_labels_df, 1,
+                                  function(x) names(which.max(table(x)))) %>%
+      as.factor()
+  }
+
+  return(cluster_labels)
+}
+
+## PAM clustering ###############################################
+#' @importFrom cluster pam
+#' @importFrom factoextra fviz_nbclust
+
+# Find number of clusters with PAM and silhouette method
+pam_clust_nclust <- function(df,
+                             max_nc_adj = 5,
+                             fviz_nbclust_method = "silhouette") {
+
+  p <- factoextra::fviz_nbclust(x = df,
+                                FUNcluster = cluster::pam,
+                                method = fviz_nbclust_method,
+                                k.max = max_nc_adj)
+  nclust <- as.numeric(p$data$clusters[which.max(p$data$y)])
+
+  return(nclust)
+}
+
+
+pam_clust <- function(df,
+                      max_nc_adj = 5,
+                      fviz_nbclust_method = "silhouette",
+                      nclust = "auto") {
+
+  if (nclust == "auto") {
+    nclust <- pam_clust_nclust(df, max_nc_adj, method)
+  }
+  cluster_labels_unsup <- cluster::pam(df, nclust, cluster.only=TRUE, nstart = 30)
+
+  return(cluster_labels)
+}
+
 
 #' @importFrom DESeq2 DESeqDataSetFromMatrix vst estimateSizeFactors
 #' @importFrom SummarizedExperiment assay
@@ -948,7 +1218,7 @@ scores_composite_pca <- function(scores,
                                  scoot_summary
 ) {
 
-  cluster_by <- names(scores)[!names(scores) %in% "params"]
+  cluster_by <- names(scores)[!names(scores) %in% c("params", "data")]
 
   results <- list()
 
@@ -956,25 +1226,29 @@ scores_composite_pca <- function(scores,
 
     # L1 ###############################################
 
-    mat <- scores[[c]][["composition"]][["layer_1"]][["distance_matrix"]]
+    mat <- scores[["data"]][["composition"]][["layer_1"]][["distance_matrix"]]
     results[[c]][["matrices"]][["L1"]] <- mat
 
     clust_labels <- scoot_summary@metadata[match(row.names(mat), scoot_summary@metadata[["scoot_sample"]]), ][[c]]
     sil <- calc_sil(dist_mat = as.dist(mat),
                     labels = clust_labels,
                     return_mean = TRUE) %>% round(3)
+    sil_iso <- calc_sil_onelabel(dist_mat = as.dist(mat),
+                                 labels = clust_labels,
+                                 return_mean = TRUE) %>% round(3)
 
     results[[c]][["plots"]][["L1"]] <- plot_pca(mat,
                                                 label = "none",
                                                 color_cluster_by = clust_labels) +
-      ggtitle(paste("L1 - PCA - low-res cell type composition\n Silhouette score:", sil))
+      ggtitle(paste("L1 - PCA - low-res cell type composition\nSilhouette score:", sil,
+                    "\nSilhouette (iso) score:", sil_iso))
 
 
     # L2 ###############################################
 
     mats <- list()
-    for (i in names(scores[[c]][["composition"]][["layer_2"]])) {
-      mats[[i]] <- scores[[c]][["composition"]][["layer_2"]][[i]][["distance_matrix"]]
+    for (i in names(scores[["data"]][["composition"]][["layer_2"]])) {
+      mats[[i]] <- scores[["data"]][["composition"]][["layer_2"]][[i]][["distance_matrix"]]
     }
 
     mat <- get_avg_matrix(mats)
@@ -985,21 +1259,62 @@ scores_composite_pca <- function(scores,
     sil <- calc_sil(dist_mat = as.dist(mat),
                     labels = clust_labels,
                     return_mean = TRUE) %>% round(3)
+    sil_iso <- calc_sil_onelabel(dist_mat = as.dist(mat),
+                                 labels = clust_labels,
+                                 return_mean = TRUE) %>% round(3)
 
     results[[c]][["plots"]][["L2"]] <- plot_pca(mat,
                                                 label = "none",
                                                 color_cluster_by = clust_labels) +
-      ggtitle(paste("L2 - PCA - hi-res cell type composition\nSilhouette score:", sil))
+      ggtitle(paste("L2 - PCA - hi-res cell type composition\nSilhouette score:", sil,
+                    "\nSilhouette (iso) score:", sil_iso))
 
+
+    # L2 TEST ###############################################
+
+    # adj_graph <- igraph::as.undirected(cccd::nng(mat, k = 3))
+    # r <- quantile(igraph::strength(adj_graph))[2] / (igraph::gorder(adj_graph) - 1) / 4
+    # cluster_labels_unsup <- igraph::cluster_leiden(adj_graph, resolution_parameter = r)$membership
+    #
+    # results[[c]][["plots"]][["L2_avg_TEST"]] <- plot_pca(mat,
+    #                                                      label = "none",
+    #                                                      color_cluster_by = clust_labels) +
+    #   ggtitle(paste("L2_avg_TEST - PCA - hi-res cell type composition\nSilhouette score:", sil,
+    #                 "\nSilhouette (iso) score:", sil_iso))
+    #
+    #
+    # # Initialize a list to store kNN graphs
+    # knn_graphs <- vector("list", length = num_datasets)
+    #
+    # # Compute kNN graph for each dataset
+    # for (i in 1:length(mats)) {
+    #   knn_graphs[[i]] <- buildKNNGraph(mats[[i]], transposed = TRUE, k = k)
+    # }
+    #
+    # # Combine kNN graphs using WNN (weighted nearest neighbors)
+    # # Initialize consensus adjacency matrix
+    # consensus_adjacency <- matrix(0, nrow = ncol(mats[[1]]), ncol = ncol(mats[[1]]))
+    #
+    # # Compute weighted average of adjacency matrices
+    # for (i in 1:num_datasets) {
+    #   adjacency <- as.matrix(knn_graphs[[i]]$graph)
+    #   consensus_adjacency <- consensus_adjacency + adjacency
+    # }
+    #
+    # # Divide by number of datasets to get average
+    # consensus_adjacency <- consensus_adjacency / num_datasets
+    #
+    # # Create consensus kNN graph object
+    # consensus_knn_graph <- list(graph = consensus_adjacency)
 
     # L3 ###############################################
 
     mats <- list()
-    for (i in names(scores[[c]][["signatures"]][["layer_1"]])) {
-      mats[[paste0("layer_1_", i)]] <- scores[[c]][["signatures"]][["layer_1"]][[i]][["distance_matrix"]]
+    for (i in names(scores[["data"]][["signatures"]][["layer_1"]])) {
+      mats[[paste0("layer_1_", i)]] <- scores[["data"]][["signatures"]][["layer_1"]][[i]][["distance_matrix"]]
     }
-    for (i in names(scores[[c]][["signatures"]][["layer_2"]])) {
-      mats[[paste0("layer_2_", i)]] <- scores[[c]][["signatures"]][["layer_1"]][[i]][["distance_matrix"]]
+    for (i in names(scores[["data"]][["signatures"]][["layer_2"]])) {
+      mats[[paste0("layer_2_", i)]] <- scores[["data"]][["signatures"]][["layer_1"]][[i]][["distance_matrix"]]
     }
 
     mat <- get_avg_matrix(mats)
@@ -1010,11 +1325,15 @@ scores_composite_pca <- function(scores,
     sil <- calc_sil(dist_mat = as.dist(mat),
                     labels = clust_labels,
                     return_mean = TRUE) %>% round(3)
+    sil_iso <- calc_sil_onelabel(dist_mat = as.dist(mat),
+                                 labels = clust_labels,
+                                 return_mean = TRUE) %>% round(3)
 
     results[[c]][["plots"]][["L3"]] <- plot_pca(mat,
                                                 label = "none",
                                                 color_cluster_by = clust_labels) +
-      ggtitle(paste("L3 - PCA - signature expression per cell type\nSilhouette score:", sil))
+      ggtitle(paste("L3 - PCA - signature expression per cell type\nSilhouette score:", sil,
+                    "\nSilhouette (iso) score:", sil_iso))
 
 
     # L1_L2_L3_combined ###############################################
@@ -1027,27 +1346,35 @@ scores_composite_pca <- function(scores,
     sil <- calc_sil(dist_mat = as.dist(mat),
                     labels = clust_labels,
                     return_mean = TRUE) %>% round(3)
+    sil_iso <- calc_sil_onelabel(dist_mat = as.dist(mat),
+                                 labels = clust_labels,
+                                 return_mean = TRUE) %>% round(3)
 
     results[[c]][["plots"]][["L1_L2_L3_combined"]] <- plot_pca(mat,
-                                                                label = "none",
-                                                                color_cluster_by = clust_labels) +
-      ggtitle(paste("L1_L2_L3_combined - PCA \nSilhouette score:", sil))
+                                                               label = "none",
+                                                               color_cluster_by = clust_labels) +
+      ggtitle(paste("L1_L2_L3_combined - PCA\nSilhouette score:", sil,
+                    "\nSilhouette (iso) score:", sil_iso))
 
 
     # B1 ###############################################
 
-    mat <- scores[[c]][["pseudobulk"]][["layer_1"]][["all"]][["distance_matrix"]]
+    mat <- scores[["data"]][["pseudobulk"]][["layer_1"]][["all"]][["distance_matrix"]]
     results[[c]][["matrices"]][["B1"]] <- mat
 
     clust_labels <- scoot_summary@metadata[match(row.names(mat), scoot_summary@metadata[["scoot_sample"]]), ][[c]]
     sil <- calc_sil(dist_mat = as.dist(mat),
                     labels = clust_labels,
                     return_mean = TRUE) %>% round(3)
+    sil_iso <- calc_sil_onelabel(dist_mat = as.dist(mat),
+                                 labels = clust_labels,
+                                 return_mean = TRUE) %>% round(3)
 
     results[[c]][["plots"]][["B1"]] <- plot_pca(mat,
                                                 label = "none",
                                                 color_cluster_by = clust_labels) +
-      ggtitle(paste("B1 - pseudobulk PCA\n Silhouette score:", sil))
+      ggtitle(paste("B1 - pseudobulk PCA\nSilhouette score:", sil,
+                    "\nSilhouette (iso) score:", sil_iso))
 
 
     # Combine plots ###############################################
