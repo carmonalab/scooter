@@ -506,40 +506,42 @@ get_aggregated_profile <- function(object,
 
       # remove from aggregated data cell with less than min_cells_aggregated
       cnts <- compositional_data(object@meta.data,
-                                 group_by_1 = group_by_aggregated[[i]],
+                                 ann_layer_col_1 = ann_layer_cols[[i]],
                                  only_counts = TRUE)
 
-      if (nrow(cnts) == 0) {
-        next
-      }
-
       # Remove cell types with less than min_cells_aggregated
-      keep <- cnts[cnts[["cell_counts"]] > min_cells_aggregated, 1] %>%
-        unlist()
-      object@meta.data$fltr <- object@meta.data[[group_by_aggregated[[i]]]]
-      object <- object[, as.character(object$fltr) %in% keep]
-      object <- object[, !is.na(object$fltr)]
+      cnts <- cnts[!is.na(cnts[["celltype"]]),]
+      cnts <- cnts[cnts[["cell_counts"]] > min_cells_aggregated, 1]
+      keep <- unlist(cnts)
 
-      if (length(unique(object@meta.data[[group_by_aggregated[[i]]]])) >= 2) {
-        suppressWarnings(
-          suppressMessages(
-            mat <-
-              Seurat::AggregateExpression(object,
-                                          group.by = group_by_aggregated[[i]],
-                                          assays = assay,
-                                          verbose = FALSE,
-                                          ...)[[assay]]
-          )
-        )
-        avg_exp[[i]] <- cbind(avg_exp[[i]], mat)
+      if (length(keep) == 0) {
+        avg_exp[[i]] <- NULL
       } else {
-        # Handle case if there is only one cell type
-        col_name <- as.character(unique(object@meta.data[[group_by_aggregated[[i]]]]))
-        avg_exp[[i]] <- object@assays[["RNA"]]["counts"]
-        row_names <- row.names(avg_exp[[i]])
-        avg_exp[[i]] <- Matrix::Matrix(rowSums(avg_exp[[i]]))
-        row.names(avg_exp[[i]]) <- row_names
-        colnames(avg_exp[[i]]) <- col_name
+        object@meta.data$fltr <- object@meta.data[[ann_layer_cols[[i]]]]
+        object <- object[, as.character(object$fltr) %in% keep]
+        object <- object[, !is.na(object$fltr)]
+
+        if (length(unique(object@meta.data[[ann_layer_cols[[i]]]])) >= 2) {
+          suppressWarnings(
+            suppressMessages(
+              mat <-
+                Seurat::AggregateExpression(object,
+                                            group.by = ann_layer_cols[[i]],
+                                            assays = assay,
+                                            verbose = FALSE,
+                                            ...)[[assay]]
+            )
+          )
+          avg_exp[[i]] <- cbind(avg_exp[[i]], mat)
+        } else {
+          # Handle case if there is only one cell type
+          col_name <- as.character(unique(object@meta.data[[ann_layer_cols[[i]]]]))
+          avg_exp[[i]] <- object@assays[["RNA"]]["counts"]
+          row_names <- row.names(avg_exp[[i]])
+          avg_exp[[i]] <- Matrix::Matrix(rowSums(avg_exp[[i]]))
+          row.names(avg_exp[[i]]) <- row_names
+          colnames(avg_exp[[i]]) <- col_name
+        }
       }
     })
   }
