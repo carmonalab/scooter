@@ -695,6 +695,7 @@ merge_scoot_objects <- function(scoot_object = NULL,
       stop("Not all components of the list are scoot objects.")
     }
   }
+  scoot_object[sapply(scoot_object, is.null)] <- NULL
 
   # fetch which layers are included in all scoot objects
   layers_in_scoot <- lapply(scoot_object, function(x) {
@@ -773,6 +774,9 @@ merge_scoot_objects <- function(scoot_object = NULL,
                      }
   )
   metadata <- data.table::rbindlist(metadata, use.names=TRUE, fill=TRUE)
+
+  # Remove columns that contain identical values across all rows
+  metadata <- metadata[, sapply(metadata, function(x) length(unique(x)) > 1)]
 
   comp_prop <- list()
   avg_expr <- list()
