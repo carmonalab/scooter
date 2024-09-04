@@ -776,7 +776,7 @@ get_scores <- function(feat_mat,
                                                            pointsize = 1.5,
                                                            color_cluster_by = cluster_labels_unsup,
                                                            add_ellipses = TRUE) +
-        ggplot2::ggtitle(paste0("PAM", score_title)) +
+        ggplot2::ggtitle(paste0("GMM", score_title)) +
         ggplot2::theme(legend.position="none")
     }
 
