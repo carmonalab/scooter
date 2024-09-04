@@ -10,7 +10,7 @@ get_cluster_score(
   min_samples = 5,
   cluster_by_drop_na = TRUE,
   batching = NULL,
-  scores = c("silhouette_isolated", "silhouette", "modularity"),
+  scores = c("silhouette_isolated", "modularity"),
   dist_method = "euclidean",
   clust_method = c("pam_clust", "h_clust"),
   knn_k = "auto",
