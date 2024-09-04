@@ -776,7 +776,7 @@ merge_scoot_objects <- function(scoot_object = NULL,
   metadata <- data.table::rbindlist(metadata, use.names=TRUE, fill=TRUE)
 
   # Remove columns that contain identical values across all rows
-  metadata <- metadata[, sapply(metadata, function(x) length(unique(x)) > 1)]
+  metadata <- metadata %>% select(where(~ n_distinct(.) > 1))
 
   comp_prop <- list()
   avg_expr <- list()
