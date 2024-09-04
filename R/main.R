@@ -1135,7 +1135,7 @@ get_cluster_score <- function(scoot_object = NULL,
             get_scores_args[c("feat_mat", "cluster_labels")] <- list(feat_mat = mat,
                                                                      cluster_labels = cluster_labels)
 
-            results[[cluster_col]][[type]][[layer]] <- get_scores(get_scores_args)
+            results[[cluster_col]][[type]][[layer]] <- do.call(get_scores, get_scores_args)
           }
 
           if (!is.null(batching))  {
@@ -1156,7 +1156,7 @@ get_cluster_score <- function(scoot_object = NULL,
                   get_scores_args[c("feat_mat", "cluster_labels")] <- list(feat_mat = mat,
                                                                            cluster_labels = cluster_labels)
 
-                  results[[cluster_col]][[type]][[layer]][[b_var]][[b]] <- get_scores(get_scores_args)
+                  results[[cluster_col]][[type]][[layer]][[b_var]][[b]] <- do.call(get_scores, get_scores_args)
 
                   for (score in scores) {
                     b_var_res_summary[[score]][["summary"]] <- c(
@@ -1235,7 +1235,7 @@ get_cluster_score <- function(scoot_object = NULL,
                   if (nrow(mat) > 1) {
                     get_scores_args[c("feat_mat", "cluster_labels")] <-
                       list(feat_mat = mat, cluster_labels = cluster_labels)
-                    res <- get_scores(get_scores_args)
+                    res <- do.call(get_scores, get_scores_args)
                     return(res)
                   } else {
                     return(NULL)
@@ -1262,7 +1262,7 @@ get_cluster_score <- function(scoot_object = NULL,
                           get_scores_args[c("feat_mat", "cluster_labels")] <-
                             list(feat_mat = m, cluster_labels = cluster_labels)
                           res[[b_var]][[b]] <-
-                            get_scores(get_scores_args)
+                            do.call(get_scores, get_scores_args)
                         }
 
                         for (score in scores) {
@@ -1371,7 +1371,7 @@ get_cluster_score <- function(scoot_object = NULL,
 
                 get_scores_args[c("feat_mat", "cluster_labels")] <-
                   list(feat_mat = t(mat), cluster_labels = cluster_labels)
-                res <- get_scores(get_scores_args)
+                res <- do.call(get_scores, get_scores_args)
                 return(res)
               } else {
                 return(NULL)
@@ -1402,7 +1402,7 @@ get_cluster_score <- function(scoot_object = NULL,
                       if (nrow(m) > 1) {
                         get_scores_args[c("feat_mat", "cluster_labels")] <-
                           list(feat_mat = t(m), cluster_labels = cluster_labels)
-                        res[[b_var]][[b]] <- get_scores(get_scores_args)
+                        res[[b_var]][[b]] <- do.call(get_scores, get_scores_args)
                       }
                     }
                     for (score in scores) {
@@ -1508,7 +1508,7 @@ get_cluster_score <- function(scoot_object = NULL,
 
                 get_scores_args[c("feat_mat", "cluster_labels")] <-
                   list(feat_mat = mat, cluster_labels = cluster_labels)
-                res <- get_scores(get_scores_args)
+                res <- do.call(get_scores, get_scores_args)
                 return(res)
               }
 
@@ -1534,7 +1534,7 @@ get_cluster_score <- function(scoot_object = NULL,
                       if (ncol(m) >= min_samples) {
                         get_scores_args[c("feat_mat", "cluster_labels")] <-
                           list(feat_mat = m, cluster_labels = cluster_labels)
-                        res[[b_var]][[b]] <- get_scores(get_scores_args)
+                        res[[b_var]][[b]] <- do.call(get_scores, get_scores_args)
 
                         for (score in scores) {
                           b_var_res_summary[[score]][["summary"]] <- c(
