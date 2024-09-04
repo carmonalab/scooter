@@ -1274,43 +1274,6 @@ scores_composite_pca <- function(scores,
                     "\nSilhouette (iso) score:", sil_iso))
 
 
-    # L2 TEST ###############################################
-
-    # adj_graph <- igraph::as.undirected(cccd::nng(mat, k = 3))
-    # r <- quantile(igraph::strength(adj_graph))[2] / (igraph::gorder(adj_graph) - 1) / 4
-    # cluster_labels_unsup <- igraph::cluster_leiden(adj_graph, resolution_parameter = r)$membership
-    #
-    # results[[c]][["plots"]][["L2_avg_TEST"]] <- plot_pca(mat,
-    #                                                      label = "none",
-    #                                                      color_cluster_by = clust_labels) +
-    #   ggtitle(paste("L2_avg_TEST - PCA - hi-res cell type composition\nSilhouette score:", sil,
-    #                 "\nSilhouette (iso) score:", sil_iso))
-    #
-    #
-    # # Initialize a list to store kNN graphs
-    # knn_graphs <- vector("list", length = num_datasets)
-    #
-    # # Compute kNN graph for each dataset
-    # for (i in 1:length(mats)) {
-    #   knn_graphs[[i]] <- buildKNNGraph(mats[[i]], transposed = TRUE, k = k)
-    # }
-    #
-    # # Combine kNN graphs using WNN (weighted nearest neighbors)
-    # # Initialize consensus adjacency matrix
-    # consensus_adjacency <- matrix(0, nrow = ncol(mats[[1]]), ncol = ncol(mats[[1]]))
-    #
-    # # Compute weighted average of adjacency matrices
-    # for (i in 1:num_datasets) {
-    #   adjacency <- as.matrix(knn_graphs[[i]]$graph)
-    #   consensus_adjacency <- consensus_adjacency + adjacency
-    # }
-    #
-    # # Divide by number of datasets to get average
-    # consensus_adjacency <- consensus_adjacency / num_datasets
-    #
-    # # Create consensus kNN graph object
-    # consensus_knn_graph <- list(graph = consensus_adjacency)
-
     # L3 ###############################################
 
     mats <- list()
