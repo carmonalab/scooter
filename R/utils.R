@@ -3,10 +3,9 @@
 ## Build S4 objects to store data
 methods::setClass(Class = "scoot",
                   slots = list(
+                    data = "list",
                     metadata = "data.frame",
-                    composition = "list",
-                    aggregated_profile = "list",
-                    version = "list"
+                    version = "package_version"
                   )
 )
 
@@ -167,22 +166,22 @@ get_cluster_score_pre_proc <- function(scoot_object,
   ## Process celltype composition ###############################################
   type <- "composition"
 
-  comp_layers <- names(scoot_object@composition)
+  comp_layers <- names(scoot_object@data[[type]])
 
   for (layer in comp_layers) {
 
-    if (inherits(scoot_object@composition[[layer]], "data.frame")) {
-      df <- scoot_object@composition[[layer]][, c("celltype", "clr", "scoot_sample"), with = FALSE]
+    if (inherits(scoot_object@data[[type]][[layer]], "data.frame")) {
+      df <- scoot_object@data[[type]][[layer]][, c("celltype", "clr", "scoot_sample"), with = FALSE]
       if (cluster_by_drop_na) {
         df <- df %>% filter(scoot_sample %in% scoot_object@metadata[["scoot_sample"]])
       }
       data[[type]][[layer]] <- pre_proc_comp(as.data.frame(df), min_samples, dist_method)
 
-    } else if (is.list(scoot_object@composition[[layer]])) {
+    } else if (is.list(scoot_object@data[[type]][[layer]])) {
       data[[type]][[layer]] <- sapply(
-        names(scoot_object@composition[[layer]]),
+        names(scoot_object@data[[type]][[layer]]),
         function(i) {
-          df <- scoot_object@composition[[layer]][[i]][, c("celltype", "clr", "scoot_sample"), with = F]
+          df <- scoot_object@data[[type]][[layer]][[i]][, c("celltype", "clr", "scoot_sample"), with = F]
           if (cluster_by_drop_na) {
             df <- df %>% filter(scoot_sample %in% scoot_object@metadata[["scoot_sample"]])
           }
@@ -196,7 +195,7 @@ get_cluster_score_pre_proc <- function(scoot_object,
   ## Process pseudobulk ###############################################
   type <- "pseudobulk"
 
-  pb_layers <- names(scoot_object@aggregated_profile[[type]])
+  pb_layers <- names(scoot_object@data[[type]])
 
   # Get black list
   if (is.null(black_list)) {
@@ -206,9 +205,9 @@ get_cluster_score_pre_proc <- function(scoot_object,
 
   for (layer in pb_layers) {
     data[[type]][[layer]] <- sapply(
-      names(scoot_object@aggregated_profile[[type]][[layer]]),
+      names(scoot_object@data[[type]][[layer]]),
       function(i) {
-        mat <- as.matrix(scoot_object@aggregated_profile[[type]][[layer]][[i]])
+        mat <- as.matrix(scoot_object@data[[type]][[layer]][[i]])
         if (cluster_by_drop_na) {
           mat <- mat[, colnames(mat) %in% as.character(scoot_object@metadata[["scoot_sample"]])]
         }
@@ -229,9 +228,6 @@ get_cluster_score_pre_proc <- function(scoot_object,
 
         mat <- t(mat)
         d <- filter_feat_dist(mat, min_samples, dist_method)
-        if (!is.null(d)) {
-          d[["feature_matrix"]] <- t(d[["feature_matrix"]])
-        }
         return(d)
       }, simplify = FALSE, USE.NAMES = TRUE
     )
@@ -241,17 +237,17 @@ get_cluster_score_pre_proc <- function(scoot_object,
   ## Process signatures ###############################################
   type <- "signatures"
 
-  sig_layers <- names(scoot_object@aggregated_profile[[type]])
+  sig_layers <- names(scoot_object@data[[type]])
 
   if (!is.null(sig_layers)) {
     for (layer in sig_layers) {
-      cols <- colnames(scoot_object@aggregated_profile[[type]][[layer]])
+      cols <- colnames(scoot_object@data[[type]][[layer]])
       signatures <- cols[!cols %in% c("celltype", "scoot_sample")]
 
       data[[type]][[layer]] <- lapply(
         signatures,
         function(i) {
-          df <- scoot_object@aggregated_profile[[type]][[layer]][, c("celltype", i, "scoot_sample"), with = FALSE]
+          df <- scoot_object@data[[type]][[layer]][, c("celltype", i, "scoot_sample"), with = FALSE]
           if (cluster_by_drop_na) {
             df <- df %>% filter(scoot_sample %in% scoot_object@metadata[["scoot_sample"]])
           }
@@ -275,122 +271,6 @@ get_cluster_score_pre_proc <- function(scoot_object,
   return(data)
 }
 
-# Unsupervised clustering ###############################################
-
-## Hierarchical clustering ###############################################
-#' @importFrom factoextra fviz_pca fviz_nbclust
-
-h_clust_nclust <- function(df,
-                           max_nc_adj = 5,
-                           NbClust_method = "ward.D2") {
-
-  # Methods commonly throwing errors or not creating specific Best.nc are commented out
-  indeces <- c("kl", "ch", "hartigan",
-               # "ccc", "scott", "marriot", "trcovw", "tracew", "friedman", "rubin",
-               "cindex", "db", "silhouette", "duda", "pseudot2",
-               # "beale",
-               "ratkowsky", "ball", "ptbiserial", "gap",
-               # "frey",
-               "mcclain", "gamma", "gplus", "tau", "dunn",
-               # "hubert",
-               "sdindex",
-               # "dindex",
-               "sdbw")
-
-  # Determine the optimal number of clusters
-  clust_results <- sapply(indeces, function(x) {
-    tryCatch({
-      fastNbClust(data = df,
-                  min.nc = 1,
-                  max.nc = max_nc_adj,
-                  method = NbClust_method,
-                  index = x)
-    }, error = function(e) {
-      return(NULL)
-    })
-  })
-
-  clust_results[sapply(clust_results, is.null)] <- NULL
-
-  nclust_table <- clust_results %>%
-    sapply(function(x) x[["Best.nc"]][["Number_clusters"]]) %>%
-    unlist() %>%
-    table()
-
-  nclust <- nclust_table %>%
-    which.max() %>%
-    nclust_table[.] %>%
-    names() %>%
-    as.numeric()
-
-  results <- list(nclust = nclust,
-                  clust_results = clust_results)
-
-  return(results)
-}
-
-
-h_clust <- function(df,
-                    max_nc_adj = 5,
-                    NbClust_method = "ward.D2",
-                    nclust = "auto") {
-
-  hier_clust_res <- hier_clust_nclust(df, max_nc_adj, NbClust_method)
-  clust_results <- hier_clust_res[["clust_results"]]
-  if (nclust == "auto") {
-    nclust <- hier_clust_res[["nclust"]]
-  }
-
-  # From the methods that agree on the number of clusters
-  clust_results_filtered <- clust_results[sapply(clust_results, function(x) x[["Best.nc"]][["Number_clusters"]] == nclust)]
-
-  # Get clustering for each method
-  cluster_labels_df <- clust_results_filtered %>%
-    sapply(function(x) x[["Best.partition"]])
-
-  if (nclust == 1) {
-    cluster_labels <- rep(1, nrow(df))
-  } else {
-    # For each method (column) get consensus cluster assignment
-    cluster_labels_unsup <- apply(cluster_labels_df, 1,
-                                  function(x) names(which.max(table(x)))) %>%
-      as.factor()
-  }
-
-  return(cluster_labels)
-}
-
-## PAM clustering ###############################################
-#' @importFrom cluster pam
-#' @importFrom factoextra fviz_nbclust
-
-# Find number of clusters with PAM and silhouette method
-pam_clust_nclust <- function(df,
-                             max_nc_adj = 5,
-                             fviz_nbclust_method = "silhouette") {
-
-  p <- factoextra::fviz_nbclust(x = df,
-                                FUNcluster = cluster::pam,
-                                method = fviz_nbclust_method,
-                                k.max = max_nc_adj)
-  nclust <- as.numeric(p$data$clusters[which.max(p$data$y)])
-
-  return(nclust)
-}
-
-
-pam_clust <- function(df,
-                      max_nc_adj = 5,
-                      fviz_nbclust_method = "silhouette",
-                      nclust = "auto") {
-
-  if (nclust == "auto") {
-    nclust <- pam_clust_nclust(df, max_nc_adj, method)
-  }
-  cluster_labels_unsup <- cluster::pam(df, nclust, cluster.only=TRUE, nstart = 30)
-
-  return(cluster_labels)
-}
 
 
 #' @importFrom DESeq2 DESeqDataSetFromMatrix vst estimateSizeFactors
@@ -433,6 +313,7 @@ DESeq2.normalize <- function(matrix,
 }
 
 
+
 #' @importFrom cluster pam
 #' @importFrom ggpubr get_legend as_ggplot
 #' @importFrom factoextra fviz_pca fviz_nbclust
@@ -441,241 +322,73 @@ DESeq2.normalize <- function(matrix,
 #' @importFrom patchwork wrap_plots plot_layout plot_annotation wrap_elements plot_spacer
 #' @importFrom ggraph ggraph geom_edge_link geom_node_point
 #' @importFrom mclust Mclust mclustBIC
+#' @importFrom pheatmap pheatmap
+#' @importFrom ggplotify as.ggplot
+#' @importFrom ComplexHeatmap Heatmap rowAnnotation
 
-get_scores <- function(feat_mat,
-                       cluster_labels,
-                       scores,
-                       dist_method,
-                       knn_k,
-                       max_nc,
-                       n_clust,
-                       NbClust_method,
-                       ntests = 100, # number of shuffling events
-                       seed = 22, # seed for random shuffling
-                       title = "", # Title for summary
-                       # For PCA
-                       invisible = c("var", "quali"),
-                       select_var = NULL) {
+get_scores_unsup <- function(data,
+                             metadata,
+                             scores,
+                             knn_k,
+                             max_nc,
+                             n_clust,
+                             NbClust_method,
+                             ntests,
+                             seed,
+                             title = "", # Title for summary plot
+                             select.var, # Number of pca loadings to show
+                             show_clustering = TRUE,
+                             heatmap_metadata_cols
+) {
 
-  if (knn_k == "auto") {
-    knn_k <- round(sqrt(nrow(feat_mat)))
-    if (knn_k < 3) {
-      knn_k <- 3
-    }
-  }
+  feat_mat <- data[["feature_matrix"]]
+  dist_mat <- data[["distance_matrix"]]
 
-  results <- list()
+  nsamples <- dim(feat_mat)[1]
 
-  # Check if there are at least 2 clusters,
-  # that there are more than 4 samples and
-  # that there are more samples than clusters (not each sample is one separate cluster)
-  if (length(unique(cluster_labels)) > 1 &
-      length(cluster_labels) > 4 &
-      nrow(feat_mat) > length(unique(cluster_labels))) {
-
-    results[["feature_matrix"]] <- feat_mat
-    dist_mat <- stats::dist(feat_mat, method = dist_method)
-    results[["distance_matrix"]] <- as.matrix(dist_mat)
-    # Do not store dist object, as this can lead to the following error when trying to view it in RStudio (depending on which packages are loaded):
-    # Error in .Primitive("[")(x, 1:6, , drop = FALSE) : incorrect number of dimensions
+  # Need at least 4 samples, otherwise clustering doe not make sense
+  if (nsamples >= 6) {
+    results <- list()
+    clus_scores_list <- list()
+    pca_plot_list <- list()
 
     # Plot PCA ###############################################
     results[["plots"]][["pca_loadings"]] <- plot_pca(feat_mat,
-                                                     color_cluster_by = cluster_labels,
                                                      label = "var",
-                                                     invisible = invisible,
-                                                     select_var = select_var) +
+                                                     labelsize = 3,
+                                                     select.var = select.var) +
       ggplot2::ggtitle("PCA showing loadings")
 
     results[["plots"]][["pca_samples"]] <- plot_pca(feat_mat,
-                                                    color_cluster_by = cluster_labels) +
+                                                    invisible = "var",
+                                                    select.var = select.var) +
       ggplot2::ggtitle("PCA showing sample names")
-
-    ## Plot PCA scree plot ###############################################
-    #
-    # # Perform PCA
-    # pca_result <- stats::prcomp(feat_mat,
-    #                             center = TRUE,
-    #                             scale. = FALSE)
-    #
-    # # Variance explained by each principal component
-    # variance_explained <- pca_result$sdev^2 / sum(pca_result$sdev^2)
-    # pc_numbers <- 1:length(variance_explained)
-    # scree_data <- data.frame(PC = pc_numbers, VarianceExplained = variance_explained)
-    #
-    # # Plot scree plot
-    # results[["plots"]][["pca_scree"]] <- ggplot(scree_data,
-    #                                             aes(x = PC,
-    #                                                 y = VarianceExplained)) +
-    #   geom_point(color = "blue", size = 3) +
-    #   geom_line(color = "blue", size = 1) +
-    #   labs(x = "Principal Component",
-    #        y = "Proportion of Variance Explained",
-    #        title = "Scree Plot") +
-    #   theme_minimal()
-
-
-    # Supervised: Calculate scores + plots ###############################################
-
-    scores_plot_list <- list()
-
-    suppressMessages({
-      suppressWarnings({
-
-        for (s in scores) {
-
-          ## Silhouette_isolated (new) ###############################################
-          if (s == "silhouette_isolated") {
-            sils <- calc_sil_onelabel(dist_mat = dist_mat,
-                                      labels = cluster_labels,
-                                      return_mean = FALSE)
-
-            avg_per_group <- sils %>%
-              dplyr::group_by(group) %>%
-              dplyr::summarize(avg_sil_width = mean(sil_width))
-
-            avg_sil <- mean(sils[["sil_width"]])
-
-            ci_intervals <- stats::t.test(sils[["sil_width"]])$conf.int
-
-            args_list <- list(dist_mat = dist_mat,
-                              labels = cluster_labels)
-
-            p_val <- perm_test(fun = calc_sil_onelabel,
-                               args_list = args_list,
-                               obs = avg_sil,
-                               ntests = ntests,
-                               seed = seed)
-
-
-            results[["scores"]][[s]] <- list("samples" = sils,
-                                             "avg_per_group" = avg_per_group,
-                                             "summary" = avg_sil,
-                                             "conf_int" = ci_intervals,
-                                             "n" = nrow(sils),
-                                             "p_value" = p_val)
-
-            p <- plot_silhouette(sil_scores = results[["scores"]][[s]],
-                                 title = "Silhouette (isolated) plot")
-
-            scores_plot_list[[s]] <- p
-          }
-
-          ## Silhouette (original) ###############################################
-          if (s == "silhouette") {
-            sils <- calc_sil(dist_mat = dist_mat,
-                             labels = cluster_labels,
-                             return_mean = FALSE)
-
-            avg_per_group <- sils %>%
-              dplyr::group_by(group) %>%
-              dplyr::summarize(avg_sil_width = mean(sil_width))
-
-            avg_sil <- mean(sils[["sil_width"]])
-
-            ci_intervals <- t.test(sils[["sil_width"]])$conf.int
-
-            args_list <- list(dist_mat = dist_mat,
-                              labels = cluster_labels)
-
-            p_val <- perm_test(fun = calc_sil,
-                               args_list = args_list,
-                               obs = avg_sil,
-                               ntests = ntests,
-                               seed = seed)
-
-            results[["scores"]][[s]] <- list("samples" = sils,
-                                             "avg_per_group" = avg_per_group,
-                                             "summary" = avg_sil,
-                                             "conf_int" = ci_intervals,
-                                             "n" = nrow(sils),
-                                             "p_value" = p_val)
-
-            p <- plot_silhouette(sil_scores = results[["scores"]][[s]],
-                                 title = "Silhouette plot")
-
-            scores_plot_list[[s]] <- p
-          }
-
-          ## Modularity ###############################################
-          if (s == "modularity") {
-
-            if (length(cluster_labels) > (knn_k)) {
-              mod_res <- calc_modularity(feat_mat = feat_mat,
-                                         labels = cluster_labels,
-                                         k = knn_k)
-              g <- mod_res[["graph"]]
-
-              # Plotting the graph
-              g <- igraph::set_vertex_attr(g, "name", value = cluster_labels)
-
-              args_list <- list(feat_mat = feat_mat,
-                                labels = cluster_labels,
-                                k = knn_k)
-
-              p_val <- perm_test(fun = calc_modularity,
-                                 args_list = args_list,
-                                 obs = mod_res[["score"]],
-                                 ntests = ntests,
-                                 seed = seed)
-
-              results[["scores"]][[s]] <- list("igraph" = g,
-                                               "summary" = mod_res[["score"]],
-                                               "n" = length(g),
-                                               "p_value" = p_val)
-
-              # Using ggraph layout = "kk" instead of default "stress",
-              # as "kk" handles disconnected communities much better (showing them separately, instead of fur balling them like "stress")
-              p <- ggraph::ggraph(g, layout = 'kk') +
-                ggraph::geom_edge_link(color = "grey", edge_width = 0.2) +
-                ggraph::geom_node_point(ggplot2::aes(fill = as.factor(names(igraph::V(g)))),
-                                        shape = 21,
-                                        color = "black",
-                                        size = 3) +
-                ggplot2::ggtitle(paste("kNN plot with k = ", knn_k,
-                                       "\nModularity score = ", round(mod_res[["score"]], 3),
-                                       ifelse(!is.null(p_val),
-                                              paste("\np-value:",
-                                                    format.pval(p_val, digits = 3)), ""))) +
-                ggplot2::labs(fill = "Groups") +
-                ggplot2::theme(panel.background = element_rect(fill = "white"))
-
-              scores_plot_list[[s]] <- p
-            }
-          }
-        }
-      })
-    })
-
-    ## Combine scores plots ###############################################
-
-    # Extract the legend and convert to ggplot
-    leg <- ggpubr::get_legend(scores_plot_list[[1]])
-    scores_plot_list <- lapply(scores_plot_list, function (x) x + ggplot2::theme(legend.position="none"))
-    scores_plot_list[["leg_plot"]] <- ggpubr::as_ggplot(leg)
-
-    results[["plots"]][["scores_combined"]] <-
-      patchwork::wrap_elements(
-        patchwork::wrap_plots(scores_plot_list,
-                              ncol = 2) +
-          patchwork::plot_layout(widths = 1) +
-          patchwork::plot_annotation("Supervised scores",
-                                     theme = ggplot2::theme(plot.title = ggplot2::element_text(face = "bold",
-                                                                                               hjust = 0,
-                                                                                               size = 20)))
-      )
 
 
     # Unsupervised clustering ###############################################
 
-    cluster_plot_list <- list()
-
     # Set maximum number of clusters (cannot be more than samples - 1)
-    if (length(cluster_labels) <= max_nc) {
-      max_nc_adj <- length(cluster_labels) - 1
+    if (nsamples <= max_nc) {
+      max_nc <- length(nsamples) - 1
     } else {
-      max_nc_adj <- max_nc
+      max_nc <- max_nc
     }
+
+    # Use rule of thumb to determine k nearest neighbours to consider
+    if (knn_k == "auto") {
+      knn_k <- round(sqrt(nsamples))
+      if (knn_k < 3) {
+        knn_k <- 3
+      }
+    }
+
+    # Args for calc_score
+    args_list <- list(feat_mat = feat_mat,
+                      dist_mat = dist_mat,
+                      scores = scores,
+                      ntests = ntests,
+                      seed = seed,
+                      knn_k = knn_k)
 
 
     ## Hierarchical clustering ###############################################
@@ -698,7 +411,7 @@ get_scores <- function(feat_mat,
       tryCatch({
         fastNbClust(data = feat_mat,
                     min.nc = 1,
-                    max.nc = max_nc_adj,
+                    max.nc = max_nc,
                     method = NbClust_method,
                     index = x)
       }, error = function(e) {
@@ -726,57 +439,25 @@ get_scores <- function(feat_mat,
     cluster_labels_df <- clust_results_filtered %>%
       sapply(function(x) x[["Best.partition"]])
 
-
-    # Plot PCA
-    if (nclust == 1) {
-      cluster_plot_list[["pca_hclust_clustered"]] <- plot_pca(feat_mat,
-                                                              label = "var",
-                                                              pointsize = 1.5) +
-        ggplot2::ggtitle("Hierarchical\nMethod: ward.D2")
-    } else {
+    if (nclust > 1) {
       # For each method (column) get consensus cluster assignment
       cluster_labels_unsup <- apply(cluster_labels_df, 1, function(x) names(which.max(table(x)))) %>%
         as.factor()
 
-      args_list <- list(dist_mat = dist_mat,
-                        feat_mat = feat_mat,
-                        labels = cluster_labels_unsup,
-                        k = knn_k)
-      score_title <- unsup_clus_score_title(args_list)
+      args_list[["cluster_labels"]] <- cluster_labels_unsup
+      clus_scores <- do.call(calc_scores, args_list)
+      clus_scores_summary <- lapply(clus_scores[["scores"]], function (x) {x[["summary"]]})
+      clus_scores_summary <- unlist(clus_scores_summary[!is.null(clus_scores_summary)])
+      score_title <- paste0(paste(names(clus_scores), "=", round(clus_scores_summary, 3)), collapse = "\n")
 
-      cluster_plot_list[["pca_hclust_clustered"]] <- plot_pca(feat_mat,
-                                                              label = "var",
-                                                              pointsize = 1.5,
-                                                              color_cluster_by = cluster_labels_unsup,
-                                                              add_ellipses = TRUE) +
-        ggplot2::ggtitle(paste0("Hierarchical", score_title)) +
-        ggplot2::theme(legend.position="none")
-    }
-
-
-    ## GMM clustering ###############################################
-
-    cluster_labels_unsup <- mclust::Mclust(feat_mat, G = nclust)$classification
-
-    # Plot PCA
-    if (nclust == 1) {
-      cluster_plot_list[["pca_gmm_clustered"]] <- plot_pca(feat_mat,
-                                                           label = "var",
-                                                           pointsize = 1.5) +
-        ggplot2::ggtitle("GMM")
-    } else {
-      args_list <- list(dist_mat = dist_mat,
-                        feat_mat = feat_mat,
-                        labels = cluster_labels_unsup,
-                        k = knn_k)
-      score_title <- unsup_clus_score_title(args_list)
-
-      cluster_plot_list[["pca_gmm_clustered"]] <- plot_pca(feat_mat,
-                                                           label = "var",
-                                                           pointsize = 1.5,
-                                                           color_cluster_by = cluster_labels_unsup,
-                                                           add_ellipses = TRUE) +
-        ggplot2::ggtitle(paste0("GMM", score_title)) +
+      clus_scores_list[["hclust"]] <- clus_scores
+      results[["clustering"]][["hclust_labels"]] <- cluster_labels_unsup
+      pca_plot_list[["hclust"]] <- plot_pca(feat_mat,
+                                            color_cluster_by = cluster_labels_unsup,
+                                            invisible = "var",
+                                            label = "none",
+                                            addEllipses = TRUE) +
+        ggplot2::ggtitle("Hierarchical", score_title) +
         ggplot2::theme(legend.position="none")
     }
 
@@ -790,7 +471,7 @@ get_scores <- function(feat_mat,
         factoextra::fviz_nbclust(x = feat_mat,
                                  FUNcluster = cluster::pam,
                                  method = "silhouette",
-                                 k.max = max_nc_adj,
+                                 k.max = max_nc,
                                  print.summary = TRUE) +
         theme_minimal() +
         ggtitle("Clusters suggested by\nK-Medoids (Partitioning Around Medoids) and silhouette method")
@@ -806,25 +487,47 @@ get_scores <- function(feat_mat,
 
     cluster_labels_unsup <- cluster::pam(feat_mat, nclust, cluster.only=TRUE, nstart = 30)
 
-    # Plot PCA
-    if (nclust == 1) {
-      cluster_plot_list[["pca_pam_clustered"]] <- plot_pca(feat_mat,
-                                                           label = "var",
-                                                           pointsize = 1.5) +
-        ggplot2::ggtitle("PAM")
-    } else {
-      args_list <- list(dist_mat = dist_mat,
-                        feat_mat = feat_mat,
-                        labels = cluster_labels_unsup,
-                        k = knn_k)
-      score_title <- unsup_clus_score_title(args_list)
+    if (nclust > 1) {
+      args_list[["cluster_labels"]] <- cluster_labels_unsup
+      clus_scores <- do.call(calc_scores, args_list)
+      clus_scores_summary <- lapply(clus_scores[["scores"]], function (x) {x[["summary"]]})
+      clus_scores_summary <- unlist(clus_scores_summary[!is.null(clus_scores_summary)])
+      score_title <- paste0(paste(names(clus_scores), "=", round(clus_scores_summary, 3)), collapse = "\n")
 
-      cluster_plot_list[["pca_pam_clustered"]] <- plot_pca(feat_mat,
-                                                           label = "var",
-                                                           pointsize = 1.5,
-                                                           color_cluster_by = cluster_labels_unsup,
-                                                           add_ellipses = TRUE) +
-        ggplot2::ggtitle(paste0("PAM", score_title)) +
+      clus_scores_list[["pam"]] <- clus_scores
+      results[["clustering"]][["pam_labels"]] <- cluster_labels_unsup
+      pca_plot_list[["pam"]] <- plot_pca(feat_mat,
+                                         color_cluster_by = cluster_labels_unsup,
+                                         invisible = "var",
+                                         label = "none",
+                                         addEllipses = TRUE) +
+        ggplot2::ggtitle("PAM", score_title) +
+        ggplot2::theme(legend.position="none")
+    }
+
+
+    ## GMM clustering ###############################################
+
+    # use nclust from PAM
+    cluster_labels_unsup <- mclust::Mclust(feat_mat,
+                                           G = nclust,
+                                           verbose = FALSE)$classification
+
+    if (nclust > 1) {
+      args_list[["cluster_labels"]] <- cluster_labels_unsup
+      clus_scores <- do.call(calc_scores, args_list)
+      clus_scores_summary <- lapply(clus_scores[["scores"]], function (x) {x[["summary"]]})
+      clus_scores_summary <- unlist(clus_scores_summary[!is.null(clus_scores_summary)])
+      score_title <- paste0(paste(names(clus_scores), "=", round(clus_scores_summary, 3)), collapse = "\n")
+
+      clus_scores_list[["gmm"]] <- clus_scores
+      results[["clustering"]][["gmm_labels"]] <- cluster_labels_unsup
+      pca_plot_list[["gmm"]] <- plot_pca(feat_mat,
+                                         color_cluster_by = cluster_labels_unsup,
+                                         invisible = "var",
+                                         label = "none",
+                                         addEllipses = TRUE) +
+        ggplot2::ggtitle("GMM", score_title) +
         ggplot2::theme(legend.position="none")
     }
 
@@ -835,34 +538,53 @@ get_scores <- function(feat_mat,
     r <- quantile(igraph::strength(adj_graph))[2] / (igraph::gorder(adj_graph) - 1) / 4
     cluster_labels_unsup <- igraph::cluster_leiden(adj_graph, resolution_parameter = r)$membership
 
-    # Plot PCA
-    if (length(unique(cluster_labels_unsup)) == 1) {
-      cluster_plot_list[["pca_leiden_clustered"]] <- plot_pca(feat_mat,
-                                                              label = "var",
-                                                              pointsize = 1.5) +
-        ggplot2::ggtitle(paste0("Leiden"))
-    } else {
-      args_list <- list(dist_mat = dist_mat,
-                        feat_mat = feat_mat,
-                        labels = cluster_labels_unsup,
-                        k = knn_k)
-      score_title <- unsup_clus_score_title(args_list)
+    nclust <- length(unique(cluster_labels_unsup))
 
-      cluster_plot_list[["pca_leiden_clustered"]] <- plot_pca(feat_mat,
-                                                              label = "var",
-                                                              pointsize = 1.5,
-                                                              color_cluster_by = cluster_labels_unsup,
-                                                              add_ellipses = TRUE) +
-        ggplot2::ggtitle(paste0("Leiden", score_title)) +
+    # Try other resolutions if only one or more than 3 clusters were found
+    if (nclust == 1) {
+      r <- quantile(igraph::strength(adj_graph))[2] / (igraph::gorder(adj_graph) - 1) / 2
+      cluster_labels_unsup <- igraph::cluster_leiden(adj_graph, resolution_parameter = r)$membership
+    }
+    if (nclust > 3) {
+      r <- quantile(igraph::strength(adj_graph))[2] / (igraph::gorder(adj_graph) - 1) / 8
+      cluster_labels_unsup <- igraph::cluster_leiden(adj_graph, resolution_parameter = r)$membership
+
+      if (length(unique(cluster_labels_unsup))) {
+        r <- quantile(igraph::strength(adj_graph))[2] / (igraph::gorder(adj_graph) - 1) / 4
+        cluster_labels_unsup <- igraph::cluster_leiden(adj_graph, resolution_parameter = r)$membership
+      }
+    }
+
+    names(cluster_labels_unsup) <- row.names(feat_mat)
+
+    nclust <- length(unique(cluster_labels_unsup))
+
+    if (nclust > 1) {
+      args_list[["cluster_labels"]] <- cluster_labels_unsup
+      clus_scores <- do.call(calc_scores, args_list)
+      clus_scores_summary <- lapply(clus_scores[["scores"]], function (x) {x[["summary"]]})
+      clus_scores_summary <- unlist(clus_scores_summary[!is.null(clus_scores_summary)])
+      score_title <- paste0(paste(names(clus_scores), "=", round(clus_scores_summary, 3)), collapse = "\n")
+
+      clus_scores_list[["leiden"]] <- clus_scores
+      results[["clustering"]][["leiden_labels"]] <- cluster_labels_unsup
+      pca_plot_list[["leiden"]] <- plot_pca(feat_mat,
+                                            color_cluster_by = cluster_labels_unsup,
+                                            invisible = "var",
+                                            label = "none",
+                                            addEllipses = TRUE) +
+        ggplot2::ggtitle("Leiden", score_title) +
         ggplot2::theme(legend.position="none")
     }
+
+    ## Combine scores
 
 
     ## Combine clustering plots ###############################################
 
-    results[["plots"]][["clustering_combined"]] <-
+    results[["plots"]][["combined"]] <-
       patchwork::wrap_elements(
-        patchwork::wrap_plots(cluster_plot_list,
+        patchwork::wrap_plots(pca_plot_list,
                               ncol = 2) +
           patchwork::plot_layout(widths = 1) +
           patchwork::plot_annotation("Unsupervised clustering",
@@ -872,18 +594,176 @@ get_scores <- function(feat_mat,
       )
 
 
+    # Heatmaps ###############################################
+
+    # Subset metadata to samples present in feat_mat
+    row.names(metadata) <- metadata[["scoot_sample"]]
+    metadata <- metadata[row.names(feat_mat), heatmap_metadata_cols]
+
+    if (show_clustering) {
+      # Add clustering labels
+      for (c in names(results[["clustering"]])) {
+        metadata[, c] <- results[["clustering"]][[c]]
+      }
+      heatmap_metadata_cols <- c(heatmap_metadata_cols, names(results[["clustering"]]))
+    }
+
+    metadata <- metadata[, heatmap_metadata_cols]
+
+    # Remove metadata columns which have different values for each sample
+    dropcols <- apply(metadata, 2, function(y) length(unique(y))) == nrow(metadata)
+    dropcols_names <- names(dropcols)[dropcols == TRUE]
+    keepcols_names <- !(colnames(metadata) %in% dropcols_names)
+    metadata <- metadata[, keepcols_names]
+
+
+    corMat <- cor(t(feat_mat), method = "pearson")
+
+    # Reorder metadata for annotation_rows
+    annotations <- metadata[row.names(corMat), ]
+    ha <- ComplexHeatmap::rowAnnotation(df = annotations)
+
+    # Plot correlation heatmap
+    results[["plots"]][["corr_hmap"]] <- ComplexHeatmap::Heatmap(corMat,
+                                                                 left_annotation = ha
+    ) %>%
+      ggplotify::as.ggplot() +
+      ggplot2::ggtitle("Correlation heatmap")
+
+    # Plot correlation heatmap sorted by dist_matrix
+    results[["plots"]][["corr_hmap_distsort"]] <- ComplexHeatmap::Heatmap(corMat,
+                                                                          clustering_distance_columns = as.dist(dist_mat),
+                                                                          clustering_distance_rows = as.dist(dist_mat),
+                                                                          left_annotation = ha
+    ) %>%
+      ggplotify::as.ggplot() +
+      ggplot2::ggtitle("Correlation heatmap sorted by distance matrix")
+
     # Combine plots ###############################################
 
-    results[["plots"]][["summary_plot"]] <- patchwork::wrap_plots(results[["plots"]],
+    results[["plots"]][["summary_plot"]] <-
+      patchwork::wrap_plots(results[["plots"]][["pca_loadings"]],
+                            results[["plots"]][["pca_samples"]],
+                            results[["plots"]][["combined"]],
+                            results[["plots"]][["corr_hmap"]],
+                            results[["plots"]][["corr_hmap_distsort"]],
+                            ncol = 2) +
+      patchwork::plot_layout(widths = 1) +
+      patchwork::plot_annotation(title,
+                                 theme = ggplot2::theme(plot.title = ggplot2::element_text(face = "bold",
+                                                                                           hjust = 0,
+                                                                                           size = 20)))
+    ggplot2::set_last_plot(NULL)
+
+
+    # Combine scores ###############################################
+
+    for (s in scores) {
+      avg_summary <- clus_scores_list %>%
+        lapply(function (x) {x[["scores"]][[s]][["summary"]]}) %>%
+        unlist() %>%
+        mean(na.rm = TRUE)
+      avg_n <- clus_scores_list %>%
+        lapply(function (x) {x[["scores"]][[s]][["n"]]}) %>%
+        unlist() %>%
+        mean(na.rm = TRUE)
+      avg_p_value <- clus_scores_list %>%
+        lapply(function (x) {x[["scores"]][[s]][["p_value"]]}) %>%
+        unlist() %>%
+        mean(na.rm = TRUE)
+
+      results[["scores"]][[s]] <- list("summary" = avg_summary,
+                                       "n" = avg_n,
+                                       "p_value" = avg_p_value)
+    }
+
+
+    return(results)
+
+  } else {
+
+    return(NULL)
+  }
+}
+
+
+
+#' @importFrom cluster pam
+#' @importFrom ggpubr get_legend as_ggplot
+#' @importFrom factoextra fviz_pca fviz_nbclust
+#' @importFrom scran buildKNNGraph
+#' @importFrom igraph modularity set_vertex_attr layout_nicely V strength gorder
+#' @importFrom patchwork wrap_plots plot_layout plot_annotation wrap_elements plot_spacer
+#' @importFrom ggraph ggraph geom_edge_link geom_node_point
+
+get_scores_sup <- function(data,
+                           cluster_labels,
+                           scores,
+                           knn_k,
+                           ntests,
+                           seed,
+                           title = "", # Title for summary plot
+                           select.var) {
+
+  feat_mat <- data[["feature_matrix"]]
+  dist_mat <- data[["distance_matrix"]]
+
+  if (knn_k == "auto") {
+    knn_k <- round(sqrt(nrow(feat_mat)))
+    if (knn_k < 3) {
+      knn_k <- 3
+    }
+  }
+
+  # Check if there are at least 2 clusters,
+  # that there are at least 6 samples and
+  # that there are more samples than clusters (not each sample is one separate cluster)
+  if (length(unique(cluster_labels)) > 1 &
+      length(cluster_labels) >= 6 &
+      nrow(feat_mat) > length(unique(cluster_labels))) {
+
+    # Supervised: Calculate scores + plots ###############################################
+
+    # Args for calc_score
+    args_list <- list(feat_mat = feat_mat,
+                      dist_mat = dist_mat,
+                      cluster_labels = cluster_labels,
+                      scores = scores,
+                      ntests = ntests,
+                      seed = seed,
+                      knn_k = knn_k,
+                      show_plot = TRUE)
+
+    results <- do.call(calc_scores, args_list)
+
+
+    # Plot PCA ###############################################
+    results[["plots"]][["pca_loadings"]] <- plot_pca(feat_mat,
+                                                     color_cluster_by = cluster_labels,
+                                                     label = "var",
+                                                     labelsize = 3,
+                                                     select.var = select.var) +
+      ggplot2::ggtitle("PCA showing loadings")
+
+    results[["plots"]][["pca_samples"]] <- plot_pca(feat_mat,
+                                                    color_cluster_by = cluster_labels,
+                                                    invisible = "var",
+                                                    select.var = select.var) +
+      ggplot2::ggtitle("PCA showing sample names")
+
+
+    # Combine plots ###############################################
+
+    results[["plots"]][["summary_plot"]] <- patchwork::wrap_plots(results[["plots"]][["pca_loadings"]],
+                                                                  results[["plots"]][["pca_samples"]],
+                                                                  results[["plots"]][["combined"]],
                                                                   ncol = 2) +
       patchwork::plot_layout(widths = 1) +
       patchwork::plot_annotation(title,
                                  theme = ggplot2::theme(plot.title = ggplot2::element_text(face = "bold",
                                                                                            hjust = 0,
                                                                                            size = 20)))
-
-    results[["plots"]][["scores"]] <- scores_plot_list
-    results[["plots"]][["clustering"]] <- cluster_plot_list
+    ggplot2::set_last_plot(NULL)
 
     return(results)
 
@@ -901,10 +781,10 @@ get_scores <- function(feat_mat,
 
 ### Calculate silhouette score of group vs all others (instead of nearest other group)
 
-calc_sil_onelabel <- function(dist_mat,
-                              labels,
-                              return_mean = TRUE,
-                              ...) {
+calc_sil_iso <- function(dist_mat,
+                         labels,
+                         return_mean = TRUE,
+                         ...) {
 
   sils <- lapply(
     unique(labels),
@@ -1069,20 +949,184 @@ p_val_zscore <- function(obs,
 
 
 
+### Calculate all scores
+
+calc_scores <- function(feat_mat,
+                        dist_mat,
+                        cluster_labels,
+                        scores,
+                        ntests,
+                        seed,
+                        knn_k,
+                        show_plot = FALSE) {
+
+  results <- list()
+
+  suppressMessages({
+    suppressWarnings({
+
+      for (s in scores) {
+
+        ## Silhouette_isolated (new) ###############################################
+        if (s == "silhouette_isolated") {
+          sils <- calc_sil_iso(dist_mat = dist_mat,
+                               labels = cluster_labels,
+                               return_mean = FALSE)
+
+          avg_per_group <- sils %>%
+            dplyr::group_by(group) %>%
+            dplyr::summarize(avg_sil_width = mean(sil_width))
+
+          avg_sil <- mean(sils[["sil_width"]])
+
+          ci_intervals <- stats::t.test(sils[["sil_width"]])$conf.int
+
+          args_list <- list(dist_mat = dist_mat,
+                            labels = cluster_labels)
+
+          p_val <- perm_test(fun = calc_sil_iso,
+                             args_list = args_list,
+                             obs = avg_sil,
+                             ntests = ntests,
+                             seed = seed)
+
+
+          results[["scores"]][[s]] <- list("samples" = sils,
+                                           "avg_per_group" = avg_per_group,
+                                           "summary" = avg_sil,
+                                           "conf_int" = ci_intervals,
+                                           "n" = nrow(sils),
+                                           "p_value" = p_val)
+
+          if (show_plot) {
+            results[["plots"]][[s]] <- plot_silhouette(sil_scores = results[["scores"]][[s]],
+                                                       title = "Silhouette (isolated) plot")
+          }
+        }
+
+        ## Silhouette (original) ###############################################
+        if (s == "silhouette") {
+          sils <- calc_sil(dist_mat = dist_mat,
+                           labels = cluster_labels,
+                           return_mean = FALSE)
+
+          avg_per_group <- sils %>%
+            dplyr::group_by(group) %>%
+            dplyr::summarize(avg_sil_width = mean(sil_width))
+
+          avg_sil <- mean(sils[["sil_width"]])
+
+          ci_intervals <- t.test(sils[["sil_width"]])$conf.int
+
+          args_list <- list(dist_mat = dist_mat,
+                            labels = cluster_labels)
+
+          p_val <- perm_test(fun = calc_sil,
+                             args_list = args_list,
+                             obs = avg_sil,
+                             ntests = ntests,
+                             seed = seed)
+
+          results[["scores"]][[s]] <- list("samples" = sils,
+                                           "avg_per_group" = avg_per_group,
+                                           "summary" = avg_sil,
+                                           "conf_int" = ci_intervals,
+                                           "n" = nrow(sils),
+                                           "p_value" = p_val)
+
+          if (show_plot) {
+            results[["plots"]][[s]] <- plot_silhouette(sil_scores = results[["scores"]][[s]],
+                                                       title = "Silhouette plot")
+          }
+        }
+
+        ## Modularity ###############################################
+        if (s == "modularity") {
+
+          if (length(cluster_labels) > (knn_k)) {
+            mod_res <- calc_modularity(feat_mat = feat_mat,
+                                       labels = cluster_labels,
+                                       k = knn_k)
+            g <- mod_res[["graph"]]
+
+            # Plotting the graph
+            g <- igraph::set_vertex_attr(g, "name", value = cluster_labels)
+
+            args_list <- list(feat_mat = feat_mat,
+                              labels = cluster_labels,
+                              k = knn_k)
+
+            p_val <- perm_test(fun = calc_modularity,
+                               args_list = args_list,
+                               obs = mod_res[["score"]],
+                               ntests = ntests,
+                               seed = seed)
+
+            results[["scores"]][[s]] <- list("igraph" = g,
+                                             "summary" = mod_res[["score"]],
+                                             "n" = length(g),
+                                             "p_value" = p_val)
+
+            if (show_plot) {
+              # Using ggraph layout = "kk" instead of default "stress",
+              # as "kk" handles disconnected communities much better (showing them separately, instead of fur balling them like "stress")
+              results[["plots"]][[s]] <- ggraph::ggraph(g, layout = 'kk') +
+                ggraph::geom_edge_link(color = "grey", edge_width = 0.2) +
+                ggraph::geom_node_point(ggplot2::aes(fill = as.factor(names(igraph::V(g)))),
+                                        shape = 21,
+                                        color = "black",
+                                        size = 3) +
+                ggplot2::ggtitle(paste("kNN plot with k = ", knn_k,
+                                       "\nModularity score = ", round(mod_res[["score"]], 3),
+                                       ifelse(!is.null(p_val),
+                                              paste("\np-value:",
+                                                    format.pval(p_val, digits = 3)), ""))) +
+                ggplot2::labs(fill = "Groups") +
+                ggplot2::theme(panel.background = element_rect(fill = "white"))
+            }
+          }
+        }
+      }
+    })
+  })
+
+  if (show_plot) {
+    ## Combine scores plots ###############################################
+
+    # Extract the legend and convert to ggplot
+    leg <- ggpubr::get_legend(results[["plots"]][[1]])
+    results[["plots"]] <- lapply(results[["plots"]],
+                                 function (x) x + ggplot2::theme(legend.position="none"))
+    results[["plots"]][["leg_plot"]] <- ggpubr::as_ggplot(leg)
+
+    results[["plots"]][["combined"]] <-
+      patchwork::wrap_elements(
+        patchwork::wrap_plots(results[["plots"]],
+                              ncol = 2) +
+          patchwork::plot_layout(widths = 1) +
+          patchwork::plot_annotation("Supervised scores",
+                                     theme = ggplot2::theme(plot.title = ggplot2::element_text(face = "bold",
+                                                                                               hjust = 0,
+                                                                                               size = 20)))
+      )
+  }
+
+  return(results)
+}
+
 
 ### get_scores plot helpers
 
 plot_pca <- function(matrix,
-                     label = "all",
-                     pointsize = 3,
-                     invisible = c("var", "quali"),
-                     select_var = NULL,
-                     geom_var = c("arrow", "text"),
-                     col_var = "steelblue",
-                     alpha_var = 0.3,
-                     repel = TRUE,
                      color_cluster_by = "none",
-                     add_ellipses = FALSE) {
+                     invisible = "none",
+                     label = "all",
+                     labelsize = 2,
+                     pointsize = 1.5,
+                     select.var = NULL,
+                     alpha.var = 0.3,
+                     addEllipses = FALSE,
+                     repel=FALSE) {
 
   # Remove constant columns with variance = 0
   constant_columns <- apply(matrix, 2, function(col) var(col) == 0)
@@ -1102,15 +1146,15 @@ plot_pca <- function(matrix,
       suppressMessages(
         p <- factoextra::fviz_pca(res.pca,
                                   habillage = color_cluster_by,
-                                  addEllipses = add_ellipses,
-                                  label = label,
-                                  pointsize = pointsize,
                                   invisible = invisible,
-                                  select.var = select_var,
-                                  geom.var = geom_var,
-                                  col.var = col_var,
-                                  alpha.var = alpha_var,
-                                  repel = repel) +
+                                  label = label,
+                                  labelsize = labelsize,
+                                  pointsize = pointsize,
+                                  select.var = select.var,
+                                  alpha.var = alpha.var,
+                                  addEllipses = addEllipses,
+                                  repel=repel,
+                                  mean.point = FALSE) +
           # do not rescale x and y-axes, so scale does not get distorted and represents actual distance better
           coord_equal() +
           # Remove shapes added by fviz_pca
@@ -1192,37 +1236,13 @@ combine_pvals <- function(list_pvals_n,
 }
 
 
-### For unsupervised clustering, calculate all scores for title
-
-unsup_clus_score_title <- function(args_list) {
-
-  suppressMessages({
-    suppressWarnings({
-      sil_iso <- do.call(calc_sil_onelabel, args_list) %>% round(3)
-      sil <- do.call(calc_sil, args_list) %>% round(3)
-
-      if (length(args_list[["labels"]]) >= (args_list[["k"]] + 1)) {
-        mod <- do.call(calc_modularity, args_list) %>% .[[1]] %>% round(3)
-      } else {
-        mod <- "n.a."
-      }
-    })
-  })
-
-  score_title <- paste0("\nSil (iso) = ", sil_iso,
-                        "\nSil = ", sil,
-                        "\nMod = ", mod)
-  return(score_title)
-}
-
-
 # Temporary functions ##############################################################################
 
 scores_composite_pca <- function(scores,
                                  scoot_summary
 ) {
 
-  cluster_by <- names(scores)[!names(scores) %in% c("params", "data")]
+  cluster_by <- names(scores)[!names(scores) %in% c("unsupervised", "params", "data")]
 
   results <- list()
 
@@ -1234,18 +1254,15 @@ scores_composite_pca <- function(scores,
     results[[c]][["matrices"]][["L1"]] <- mat
 
     clust_labels <- scoot_summary@metadata[match(row.names(mat), scoot_summary@metadata[["scoot_sample"]]), ][[c]]
-    sil <- calc_sil(dist_mat = as.dist(mat),
-                    labels = clust_labels,
-                    return_mean = TRUE) %>% round(3)
-    sil_iso <- calc_sil_onelabel(dist_mat = as.dist(mat),
-                                 labels = clust_labels,
-                                 return_mean = TRUE) %>% round(3)
+    sil_iso <- calc_sil_iso(dist_mat = as.dist(mat),
+                            labels = clust_labels,
+                            return_mean = TRUE) %>% round(3)
 
     results[[c]][["plots"]][["L1"]] <- plot_pca(mat,
                                                 label = "none",
+                                                invisible = c("var", "quali"),
                                                 color_cluster_by = clust_labels) +
-      ggtitle(paste("L1 - PCA - low-res cell type composition\nSilhouette score:", sil,
-                    "\nSilhouette (iso) score:", sil_iso))
+      ggtitle(paste("L1 - PCA - low-res cell type composition\nSilhouette (iso) score:", sil_iso))
 
 
     # L2 ###############################################
@@ -1260,18 +1277,15 @@ scores_composite_pca <- function(scores,
     results[[c]][["matrices"]][["L2"]] <- mat
 
     clust_labels <- scoot_summary@metadata[match(row.names(mat), scoot_summary@metadata[["scoot_sample"]]), ][[c]]
-    sil <- calc_sil(dist_mat = as.dist(mat),
-                    labels = clust_labels,
-                    return_mean = TRUE) %>% round(3)
-    sil_iso <- calc_sil_onelabel(dist_mat = as.dist(mat),
-                                 labels = clust_labels,
-                                 return_mean = TRUE) %>% round(3)
+    sil_iso <- calc_sil_iso(dist_mat = as.dist(mat),
+                            labels = clust_labels,
+                            return_mean = TRUE) %>% round(3)
 
     results[[c]][["plots"]][["L2"]] <- plot_pca(mat,
                                                 label = "none",
+                                                invisible = c("var", "quali"),
                                                 color_cluster_by = clust_labels) +
-      ggtitle(paste("L2 - PCA - hi-res cell type composition\nSilhouette score:", sil,
-                    "\nSilhouette (iso) score:", sil_iso))
+      ggtitle(paste("L2 - PCA - hi-res cell type composition\nSilhouette (iso) score:", sil_iso))
 
 
     # L3 ###############################################
@@ -1289,18 +1303,15 @@ scores_composite_pca <- function(scores,
     results[[c]][["matrices"]][["L3"]] <- mat
 
     clust_labels <- scoot_summary@metadata[match(row.names(mat), scoot_summary@metadata[["scoot_sample"]]), ][[c]]
-    sil <- calc_sil(dist_mat = as.dist(mat),
-                    labels = clust_labels,
-                    return_mean = TRUE) %>% round(3)
-    sil_iso <- calc_sil_onelabel(dist_mat = as.dist(mat),
-                                 labels = clust_labels,
-                                 return_mean = TRUE) %>% round(3)
+    sil_iso <- calc_sil_iso(dist_mat = as.dist(mat),
+                            labels = clust_labels,
+                            return_mean = TRUE) %>% round(3)
 
     results[[c]][["plots"]][["L3"]] <- plot_pca(mat,
                                                 label = "none",
+                                                invisible = c("var", "quali"),
                                                 color_cluster_by = clust_labels) +
-      ggtitle(paste("L3 - PCA - signature expression per cell type\nSilhouette score:", sil,
-                    "\nSilhouette (iso) score:", sil_iso))
+      ggtitle(paste("L3 - PCA - signature expression per cell type\nSilhouette (iso) score:", sil_iso))
 
 
     # L1_L2_L3_combined ###############################################
@@ -1310,18 +1321,15 @@ scores_composite_pca <- function(scores,
     results[[c]][["matrices"]][["L1_L2_L3_combined"]] <- mat
 
     clust_labels <- scoot_summary@metadata[match(row.names(mat), scoot_summary@metadata[["scoot_sample"]]), ][[c]]
-    sil <- calc_sil(dist_mat = as.dist(mat),
-                    labels = clust_labels,
-                    return_mean = TRUE) %>% round(3)
-    sil_iso <- calc_sil_onelabel(dist_mat = as.dist(mat),
-                                 labels = clust_labels,
-                                 return_mean = TRUE) %>% round(3)
+    sil_iso <- calc_sil_iso(dist_mat = as.dist(mat),
+                            labels = clust_labels,
+                            return_mean = TRUE) %>% round(3)
 
     results[[c]][["plots"]][["L1_L2_L3_combined"]] <- plot_pca(mat,
                                                                label = "none",
+                                                               invisible = c("var", "quali"),
                                                                color_cluster_by = clust_labels) +
-      ggtitle(paste("L1_L2_L3_combined - PCA\nSilhouette score:", sil,
-                    "\nSilhouette (iso) score:", sil_iso))
+      ggtitle(paste("L1_L2_L3_combined - PCA\nSilhouette (iso) score:", sil_iso))
 
 
     # B1 ###############################################
@@ -1330,18 +1338,15 @@ scores_composite_pca <- function(scores,
     results[[c]][["matrices"]][["B1"]] <- mat
 
     clust_labels <- scoot_summary@metadata[match(row.names(mat), scoot_summary@metadata[["scoot_sample"]]), ][[c]]
-    sil <- calc_sil(dist_mat = as.dist(mat),
-                    labels = clust_labels,
-                    return_mean = TRUE) %>% round(3)
-    sil_iso <- calc_sil_onelabel(dist_mat = as.dist(mat),
-                                 labels = clust_labels,
-                                 return_mean = TRUE) %>% round(3)
+    sil_iso <- calc_sil_iso(dist_mat = as.dist(mat),
+                            labels = clust_labels,
+                            return_mean = TRUE) %>% round(3)
 
     results[[c]][["plots"]][["B1"]] <- plot_pca(mat,
                                                 label = "none",
+                                                invisible = c("var", "quali"),
                                                 color_cluster_by = clust_labels) +
-      ggtitle(paste("B1 - pseudobulk PCA\nSilhouette score:", sil,
-                    "\nSilhouette (iso) score:", sil_iso))
+      ggtitle(paste("B1 - pseudobulk PCA\nSilhouette (iso) score:", sil_iso))
 
 
     # Combine plots ###############################################

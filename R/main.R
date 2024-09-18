@@ -185,10 +185,11 @@ scoot_helper <- function(object,
                                        useNA = useNA)
 
   scoot <- methods::new("scoot",
+                        data = list(composition = comp_prop,
+                                    pseudobulk = avg_expr,
+                                    signatures = aggr_sig),
                         metadata = metadata,
-                        aggregated_profile = list("pseudobulk" = avg_expr,
-                                                  "signatures" = aggr_sig),
-                        composition = comp_prop
+                        version = packageVersion("scooter")
   )
   return(scoot)
 }
@@ -459,7 +460,7 @@ get_aggregated_profile <- function(object,
 
   avg_exp <- list()
 
-  # loop over different grouping
+  # loop over different annotation layer colnames
   for (i in names(ann_layer_cols)) {
 
     # compute pseudobulk
@@ -475,33 +476,37 @@ get_aggregated_profile <- function(object,
         row.names(avg_exp[[i]]) <- row_names
         colnames(avg_exp[[i]]) <- "all"
 
+        na_cells <- is.na(object[[ann_layer_cols[[i]]]])
 
-        # Calculate pseudobulk for annotated cells in sample
-        # Subset to remove not annotated cells
-        obj <- object[, which(!is.na(object[[ann_layer_cols[[i]]]]))]
+        if (sum(!na_cells) > 0) {
+          # Calculate pseudobulk for annotated cells in sample
+          # Subset to remove not annotated cells
+          obj <- object[, which(!na_cells)]
 
-        # Calculate pseudobulk of all annotated cells
-        mat <- obj@assays[["RNA"]]["counts"]
-        row_names <- row.names(mat)
-        mat <- Matrix::Matrix(rowSums(mat))
-        row.names(mat) <- row_names
-        colnames(mat) <- "all.annotated_only"
+          # Calculate pseudobulk of all annotated cells
+          mat <- obj@assays[["RNA"]]["counts"]
+          row_names <- row.names(mat)
+          mat <- Matrix::Matrix(rowSums(mat))
+          row.names(mat) <- row_names
+          colnames(mat) <- "all.annotated_only"
 
-        avg_exp[[i]] <- cbind(avg_exp[[i]], mat)
+          avg_exp[[i]] <- cbind(avg_exp[[i]], mat)
+        }
 
+        if (sum(na_cells) > 0) {
+          # Calculate pseudobulk for not annotated cells in sample
+          # Subset to remove annotated cells
+          obj <- object[, which(na_cells)]
 
-        # Calculate pseudobulk for not annotated cells in sample
-        # Subset to remove annotated cells
-        obj <- object[, which(is.na(object[[ann_layer_cols[[i]]]]))]
+          # Calculate pseudobulk of all annotated cells
+          mat <- obj@assays[["RNA"]]["counts"]
+          row_names <- row.names(mat)
+          mat <- Matrix::Matrix(rowSums(mat))
+          row.names(mat) <- row_names
+          colnames(mat) <- "all.not_annotated_only"
 
-        # Calculate pseudobulk of all annotated cells
-        mat <- obj@assays[["RNA"]]["counts"]
-        row_names <- row.names(mat)
-        mat <- Matrix::Matrix(rowSums(mat))
-        row.names(mat) <- row_names
-        colnames(mat) <- "all.not_annotated_only"
-
-        avg_exp[[i]] <- cbind(avg_exp[[i]], mat)
+          avg_exp[[i]] <- cbind(avg_exp[[i]], mat)
+        }
       }
 
       # remove from aggregated data cell with less than min_cells_aggregated
@@ -699,9 +704,9 @@ merge_scoot_objects <- function(scoot_object = NULL,
 
   # fetch which layers are included in all scoot objects
   layers_in_scoot <- lapply(scoot_object, function(x) {
-    a <- names(x@composition)
-    b <- names(x@aggregated_profile$pseudobulk)
-    c <- names(x@aggregated_profile$signatures)
+    a <- names(x@data[["composition"]])
+    b <- names(x@data[["pseudobulk"]])
+    c <- names(x@data[["signatures"]])
     u <- unique(c(a,b,c))
     return(u)
   })
@@ -793,12 +798,14 @@ merge_scoot_objects <- function(scoot_object = NULL,
 
     # assess that all scoot objects in the list contain the composition data for that layer
     is_df_check <- scoot_object[layer_present] %>%
-      lapply(methods::slot, name = type) %>%
+      lapply(methods::slot, name = "data") %>%
+      lapply("[[", type) %>%
       lapply("[[", gb) %>%
       lapply(is.data.frame) %>%
       unlist()
     is_list_check <- scoot_object[layer_present] %>%
-      lapply(methods::slot, name = type) %>%
+      lapply(methods::slot, name = "data") %>%
+      lapply("[[", type) %>%
       lapply("[[", gb) %>%
       lapply(function(x) {is.list(x) &!inherits(x, "data.frame")}) %>%
       unlist()
@@ -806,7 +813,7 @@ merge_scoot_objects <- function(scoot_object = NULL,
     if (all(is_df_check)) {
       df <- lapply(X = layer_present,
                    function(x) {
-                     scoot_object[[x]]@composition[[gb]] %>%
+                     scoot_object[[x]]@data[[type]][[gb]] %>%
                        mutate(scoot_sample = x)
                    })
       df <- data.table::rbindlist(df, use.names=TRUE, fill=TRUE)
@@ -814,7 +821,8 @@ merge_scoot_objects <- function(scoot_object = NULL,
 
     } else if (all(is_list_check)) {
       gb_sublevel_unique_names <- scoot_object[layer_present] %>%
-        lapply(methods::slot, name = type) %>%
+        lapply(methods::slot, name = "data") %>%
+        lapply("[[", type) %>%
         lapply("[[", gb) %>%
         lapply(names) %>%
         unlist() %>%
@@ -822,8 +830,8 @@ merge_scoot_objects <- function(scoot_object = NULL,
       for (i in gb_sublevel_unique_names) {
         df <- lapply(X = layer_present,
                      function(x) {
-                       if (!is.null(scoot_object[[x]]@composition[[gb]][[i]])) {
-                         scoot_object[[x]]@composition[[gb]][[i]] %>%
+                       if (!is.null(scoot_object[[x]]@data[[type]][[gb]][[i]])) {
+                         scoot_object[[x]]@data[[type]][[gb]][[i]] %>%
                            mutate(scoot_sample = x)
                        }
                      })
@@ -841,19 +849,20 @@ merge_scoot_objects <- function(scoot_object = NULL,
     # Aggregated_profile Pseudobulk
     celltypes <- lapply(names(scoot_object),
                         function(x) {
-                          colnames(scoot_object[[x]]@aggregated_profile[[type]][[gb]])
+                          colnames(scoot_object[[x]]@data[[type]][[gb]])
                         }) %>%
-      unlist() %>% unique()
+      unlist() %>%
+      unique()
 
     for (ct in celltypes) {
       ct_present <- lapply(names(scoot_object),
                            function(x) {
-                             ct %in% colnames(scoot_object[[x]]@aggregated_profile[[type]][[gb]]) }) %>%
+                             ct %in% colnames(scoot_object[[x]]@data[[type]][[gb]]) }) %>%
         unlist()
       layer_ct_present <- names(scoot_object)[(names(scoot_object) %in% layer_present) & ct_present]
       df <- lapply(X = layer_ct_present,
                    function(x) {
-                     scoot_object[[x]]@aggregated_profile[[type]][[gb]][, ct]
+                     scoot_object[[x]]@data[[type]][[gb]][, ct]
                    })
       df <- do.call(cbind, df)
       df <- Matrix::Matrix(df, sparse = TRUE)
@@ -885,8 +894,8 @@ merge_scoot_objects <- function(scoot_object = NULL,
 
     df <- lapply(X = layer_present,
                  function(x) {
-                   if (!is.null(scoot_object[[x]]@aggregated_profile[[type]][[gb]])) {
-                     scoot_object[[x]]@aggregated_profile[[type]][[gb]] %>%
+                   if (!is.null(scoot_object[[x]]@data[[type]][[gb]])) {
+                     scoot_object[[x]]@data[[type]][[gb]] %>%
                        mutate(scoot_sample = x)
                    }
                  })
@@ -897,10 +906,11 @@ merge_scoot_objects <- function(scoot_object = NULL,
   }
 
   scoot <- methods::new("scoot",
+                        data = list(composition = comp_prop,
+                                    pseudobulk = avg_expr,
+                                    signatures = aggr_sig),
                         metadata = metadata,
-                        composition = comp_prop,
-                        aggregated_profile = list("pseudobulk" = avg_expr,
-                                                  "signatures" = aggr_sig)
+                        version = packageVersion("scooter")
   )
   return(scoot)
 }
@@ -908,7 +918,7 @@ merge_scoot_objects <- function(scoot_object = NULL,
 
 #' Get metrics of cell types pseudobulk clustering
 #'
-#' @param scoot_object A scoot class object obtained with \link{scoot_object} or pseudobulk raw count matrix (\code{scootObject@aggregated_profile$pseudobulk$layer_1})
+#' @param scoot_object A scoot class object obtained with \link{scoot_object} or pseudobulk raw count matrix (\code{scootObject@data[["pseudobulk"]]layer_1})
 #' @param cluster_by Vector indicating the variable for clustering, default is celltype (for the annotation) and sample
 #' @param min_samples Minimum number of samples to calculate scores (do not go lower than 5)
 #' @param cluster_by_drop_na Whether to keep (FALSE) or drop (TRUE) NAs present in cluster_by column.
@@ -918,12 +928,10 @@ merge_scoot_objects <- function(scoot_object = NULL,
 #' @param n_clust Number of clusters for unsupervised clustering. Use "auto" to automatically determine it. Alternatively, put an integer to force a specific number of clusters.
 #' @param dist_method Method to compute distance between celltypes, default is euclidean.
 #' @param NbClust_method Hierarchical clustering method for fastNbClust (improved version of NbClust::NbClust).
+#' @param show_clustering Boolean indicating whether to show the clustering annotation results on the heatmaps
 #' @param ntests Number of shuffling events to calculate p-value for scores
 #' @param seed Set seed for random shuffling events to calculate p-value for scores
 #' @param pval.combine Method for combining p-values if calculated using batching. Default is "zmethod" weighted (Stouffer's) Z-method, weighting by sample size per batch. Alternatively, Fisher's method can be used with "fisher".
-#' @param pca_comps_labs_invisible Parameter to pass to fviz_pca defining which labels to plot for composition PCA, see documentation of fviz_pca for details.
-#' @param pca_pb_labs_invisible Parameter to pass to fviz_pca defining which labels to plot for pseudobulk PCA, see documentation of fviz_pca for details.
-#' @param pca_sig_labs_invisible Parameter to pass to fviz_pca defining which labels to plot for signatures PCA, see documentation of fviz_pca for details.
 #' @param nvar_genes Number of variable genes to assess samples. Default is 500.
 #' @param black_list List of genes to discard from clustering, if "default" object "default_black_list" object is used. Alternative black listed genes can be provided as a vector or list.
 #' @param pca_n_hvg Number of most highly variable genes to plot on the PCA (for pseudobulks).
@@ -959,22 +967,17 @@ get_cluster_score <- function(scoot_object = NULL,
                                          # "silhouette",
                                          "modularity"),
                               dist_method = "euclidean",
-                              clust_method = c("pam_clust", "h_clust"),
                               knn_k = "auto",
                               max_nc = 5,
                               n_clust = "auto",
-                              hdbscan_min_pts = 3,
                               NbClust_method = "ward.D2",
+                              show_clustering = TRUE,
+                              heatmap_metadata_cols = NULL,
 
                               # For scores p-value calculation
                               ntests = 100, # number of shuffling events
-                              seed = 22, # seed for random shuffling
+                              seed = 0, # seed for random shuffling
                               pval_combine_method = "weighted_zmethod",
-
-                              # For PCA
-                              pca_comps_labs_invisible = c("quali"),
-                              pca_pb_labs_invisible = c("quali"),
-                              pca_sig_labs_invisible = c("quali"),
 
                               # Pseudobulk params
                               nvar_genes = 500,
@@ -992,15 +995,28 @@ get_cluster_score <- function(scoot_object = NULL,
       !inherits(scoot_object, "scoot")) {
     stop("Please provide a scoot class object or a count matrix.")
   }
-  if (is.null(cluster_by)) {
-    stop("Please provide a metadata column name to cluster by.")
+  if (!is.null(cluster_by)) {
+    if (!any(cluster_by %in% names(scoot_object@metadata))) {
+      stop("cluster_by variables ", paste(cluster_by, collapse = ", "), " not found in metadata")
+    } else if (!all(cluster_by %in% names(scoot_object@metadata))) {
+      cluster_by <- cluster_by[cluster_by %in% names(scoot_object@metadata)]
+      message("Only found ", paste(cluster_by, collapse = ", ") , " as grouping variable for scoot Object.")
+    }
+
+    # Replace special characters
+    cluster_by <- make.names(cluster_by)
   }
 
-  if (!any(cluster_by %in% names(scoot_object@metadata))) {
-    stop("cluster_by variables ", paste(cluster_by, collapse = ", "), " not found in metadata")
-  } else if (!all(cluster_by %in% names(scoot_object@metadata))) {
-    cluster_by <- cluster_by[cluster_by %in% names(scoot_object@metadata)]
-    message("Only found ", paste(cluster_by, collapse = ", ") , " as grouping variable for scoot Object.")
+  if (!is.null(heatmap_metadata_cols)) {
+    if (!any(heatmap_metadata_cols %in% names(scoot_object@metadata))) {
+      stop("cluster_by variables ", paste(heatmap_metadata_cols, collapse = ", "), " not found in metadata")
+    } else if (!all(heatmap_metadata_cols %in% names(scoot_object@metadata))) {
+      heatmap_metadata_cols <- heatmap_metadata_cols[heatmap_metadata_cols %in% names(scoot_object@metadata)]
+      message("Only found ", paste(heatmap_metadata_cols, collapse = ", ") , " as variable for heatmap labeling.")
+    }
+
+    # Replace special characters
+    cluster_by <- make.names(cluster_by)
   }
 
   if (!is.numeric(min_samples) ||
@@ -1018,26 +1034,27 @@ get_cluster_score <- function(scoot_object = NULL,
     stop("n_clust must be a single numeric >= 2 or 'auto'.")
   }
 
-  # Need to replace special characters
+  # Replace special characters
   colnames(scoot_object@metadata) <- make.names(colnames(scoot_object@metadata))
-  cluster_by <- make.names(cluster_by)
 
-  for (i in cluster_by) {
-    if (length(unique(scoot_object@metadata[[i]])) == 1) {
-      stop("All values are the same in cluster_by ", i, ". Please provide a metadata column with at least two different groups.")
+  if (!is.null(cluster_by)) {
+    for (i in cluster_by) {
+      if (length(unique(scoot_object@metadata[[i]])) == 1) {
+        stop("All values are the same in cluster_by ", i, ". Please provide a metadata column with at least two different groups.")
+      }
     }
-  }
 
-  # Convert NA to factor level or drop
-  for (i in cluster_by) {
-    if (cluster_by_drop_na) {
-      scoot_object@metadata <- scoot_object@metadata[!is.na(scoot_object@metadata[[i]]), ]
-    } else {
-      scoot_object@metadata[[i]] <- as.character(scoot_object@metadata[[i]])
-      scoot_object@metadata[[i]][is.na(scoot_object@metadata[[i]])] <- "NA"
+    # Convert NA to factor level or drop
+    for (i in cluster_by) {
+      if (cluster_by_drop_na) {
+        scoot_object@metadata <- scoot_object@metadata[!is.na(scoot_object@metadata[[i]]), ]
+      } else {
+        scoot_object@metadata[[i]] <- as.character(scoot_object@metadata[[i]])
+        scoot_object@metadata[[i]][is.na(scoot_object@metadata[[i]])] <- "NA"
+      }
+      # cluster_by column must be factor
+      scoot_object@metadata[[i]] <- as.factor(scoot_object@metadata[[i]])
     }
-    # cluster_by column must be factor
-    scoot_object@metadata[[i]] <- as.factor(scoot_object@metadata[[i]])
   }
 
   # set parallelization parameters
@@ -1045,562 +1062,772 @@ get_cluster_score <- function(scoot_object = NULL,
                                bparam = bparam,
                                progressbar = progressbar)
 
-  # empty list to fill in the loop
   results <- list()
 
 
   # Process data ###############################################
 
   ## Pre-process data ###############################################
+  message("\nPre-processing\n")
   data <- get_cluster_score_pre_proc(scoot_object,
                                      cluster_by_drop_na,
                                      min_samples,
                                      dist_method,
                                      nvar_genes = nvar_genes,
-                                     cluster_by = 1,
+                                     cluster_by = 1, # Use no formula for DeSEQ2
                                      black_list)
 
 
   ## Unsupervised ###############################################
-  # message("\nUnsupervised analysis\n")
-  #
-  # clust_args <- list(max_nc_adj = max_nc_adj,
-  #                    fviz_nbclust_method = "silhouette",
-  #                    nclust = "auto")
-  #
-  # message("\nProcessing cell type composition\n")
-  #
-  # comp_layers <- names(data[["composition"]])
-  #
-  # for (layer in comp_layers) {
-  #   if (layer == comp_layers[1]) {
-  #     df <- data[["composition"]][["feature_matrix"]]
-  #
-  #     cluster_labels <- do.call(clust_method, clust_args)
-  #   }
-  # }
+  message("Unsupervised analysis\n")
+
+  get_scores_unsup_args <- list(metadata = scoot_object@metadata,
+                                scores = scores,
+                                knn_k = knn_k,
+                                max_nc = max_nc,
+                                n_clust = n_clust,
+                                NbClust_method = NbClust_method,
+                                ntests = ntests,
+                                seed = seed,
+                                show_clustering = show_clustering,
+                                heatmap_metadata_cols = heatmap_metadata_cols)
+
+  # m = modality (e.g. composition)
+  # l = layer (e.g. containing broad cell types or cell subtypes)
+  # s = sub layer (e.g. cell subtype composition)
+  for (m in names(data)) {
+    if (m == "pseudobulk") {
+      get_scores_unsup_args[["select.var"]] <- list(cos2 = pca_n_hvg)
+    } else {
+      get_scores_unsup_args["select.var"] <- list(NULL)
+    }
+
+    for (l in names(data[[m]])) {
+      message("Processing: ", m, " ", l)
+
+      # E.g. composition layer_1 has only one feature space (broad cell types)
+      # E.g. composition layer_2 might have multiple feature spaces (CD8T subtypes, CD4T subtypes, ...)
+      if ("feature_matrix" %in% names(data[[m]][[l]])) {
+        get_scores_unsup_args[["data"]] <- data[[m]][[l]]
+        get_scores_unsup_args[["title"]] <- paste(stringr::str_to_title(m), l)
+        results[["unsupervised"]][[m]][[l]] <- do.call(get_scores_unsup, get_scores_unsup_args)
+      }
+
+      else {
+        data[[m]][[l]][sapply(data[[m]][[l]], is.null)] <- NULL
+        nams <- names(data[[m]][[l]])
+        results[["unsupervised"]][[m]][[l]] <- BiocParallel::bplapply(
+          X = names(data[[m]][[l]]),
+          BPPARAM = param,
+          function(s) {
+            args <- get_scores_unsup_args
+            args[["data"]] <- data[[m]][[l]][[s]]
+            args[["title"]] <- paste(stringr::str_to_title(m), l, s)
+            do.call(get_scores_unsup, args)
+          }
+        )
+        names(results[["unsupervised"]][[m]][[l]]) <- nams
+      }
+    }
+  }
 
 
   ## Supervised ###############################################
-  message("\nSupervised analysis\n")
+  if (!is.null(cluster_by)) {
+    message("\nSupervised analysis\n")
 
-  get_scores_args <- list(scores = scores,
-                          dist_method = dist_method,
-                          knn_k = knn_k,
-                          max_nc = max_nc,
-                          n_clust = n_clust,
-                          NbClust_method = NbClust_method,
-                          ntests = ntests,
-                          seed = seed)
+    get_scores_sup_args <- list(scores = scores,
+                                knn_k = knn_k,
+                                ntests = ntests,
+                                seed = seed)
 
-  for (cluster_col in cluster_by) {
-    message("Processing ", cluster_col)
+    for (c in cluster_by) {
+      message("Processing: ", c)
 
-    ## Process celltype composition ###############################################
-    message("\nProcessing cell type composition\n")
-
-    type <- "composition"
-
-    comp_layers <- names(scoot_object@composition)
-
-    for (layer in comp_layers) {
-
-      get_scores_args[c("title", "invisible")] <- list(title = paste(cluster_col,
-                                                                     stringr::str_to_title(type),
-                                                                     layer),
-                                                       invisible = pca_comps_labs_invisible)
-
-      if (inherits(scoot_object@composition[[layer]], "data.frame")) {
-        mat <- scoot_object@composition[[layer]][, c("celltype", "clr", "scoot_sample"), with = FALSE]
-
-        if (cluster_by_drop_na) {
-          mat <- mat %>% filter(scoot_sample %in% scoot_object@metadata[["scoot_sample"]])
-        }
-        mat <- mat %>%
-          tidyr::pivot_wider(names_from = scoot_sample,
-                             values_from = clr) %>%
-          stats::na.omit() %>%
-          tibble::column_to_rownames(var = "celltype") %>%
-          t() %>%
-          scale(center = TRUE,
-                scale = FALSE)
-
-        if (nrow(mat) >= min_samples) {
-
-          if (is.null(batching))  {
-            cluster_labels <- scoot_object@metadata %>%
-              dplyr::filter(scoot_sample %in% row.names(mat)) %>%
-              .[[cluster_col]]
-
-            get_scores_args[c("feat_mat", "cluster_labels")] <- list(feat_mat = mat,
-                                                                     cluster_labels = cluster_labels)
-
-            results[[cluster_col]][[type]][[layer]] <- do.call(get_scores, get_scores_args)
-          }
-
-          if (!is.null(batching))  {
-            for (b_var in batching) {
-              if (b_var != cluster_col) {
-                b_var_res_summary <- list()
-                for (b in unique(scoot_object@metadata[[b_var]])) {
-                  meta <- scoot_object@metadata %>%
-                    dplyr::filter(get(b_var) == b) %>%
-                    dplyr::filter(scoot_sample %in% row.names(mat))
-
-                  cluster_labels <- meta[[cluster_col]]
-
-                  m <- mat[ , row.names(mat) %in% as.character(meta[["scoot_sample"]])] %>%
-                    scale(center = TRUE,
-                          scale = FALSE)
-
-                  get_scores_args[c("feat_mat", "cluster_labels")] <- list(feat_mat = mat,
-                                                                           cluster_labels = cluster_labels)
-
-                  results[[cluster_col]][[type]][[layer]][[b_var]][[b]] <- do.call(get_scores, get_scores_args)
-
-                  for (score in scores) {
-                    b_var_res_summary[[score]][["summary"]] <- c(
-                      b_var_res_summary[[score]][["summary"]],
-                      results[[cluster_col]][[type]][[layer]][[b_var]][[b]][["scores"]][[score]][["summary"]])
-                    b_var_res_summary[[score]][["n"]] <- c(
-                      b_var_res_summary[[score]][["n"]],
-                      results[[cluster_col]][[type]][[layer]][[b_var]][[b]][["scores"]][[score]][["n"]])
-                    b_var_res_summary[[score]][["p_value"]] <- c(
-                      b_var_res_summary[[score]][["p_value"]],
-                      results[[cluster_col]][[type]][[layer]][[b_var]][[b]][["scores"]][[score]][["p_value"]])
-                  }
-                }
-
-                for (score in scores) {
-                  b_var_res_summary[[score]][["summary"]] <- stats::na.omit(b_var_res_summary[[score]][["summary"]])
-                  b_var_res_summary[[score]][["summary"]] <-
-                    mean(b_var_res_summary[[score]][["summary"]])
-
-                  # Requires the number of samples per batch, so run before summing n
-                  p_values_not_na <- stats::na.omit(b_var_res_summary[[score]][["p_value"]])
-                  p_values_not_na_len <- length(p_values_not_na)
-                  if (p_values_not_na_len > 1) {
-                    b_var_res_summary[[score]] <- combine_pvals(b_var_res_summary[[score]],
-                                                                pval_combine_method)
-                  } else if (p_values_not_na_len == 1) {
-                    b_var_res_summary[[score]][["p_value"]] <- p_values_not_na
-                  } else {
-                    b_var_res_summary[[score]][["p_value"]] <- NULL
-                    b_var_res_summary[[score]][["summary"]] <- NULL
-                  }
-
-                  b_var_res_summary[[score]][["n"]] <-
-                    sum(b_var_res_summary[[score]][["n"]])
-                }
-                results[[cluster_col]][[type]][[layer]][[b_var]][["all"]][["scores"]] <- b_var_res_summary
-              }
-            }
-          }
+      # m = modality (e.g. composition)
+      # l = layer (e.g. containing broad cell types or cell subtypes)
+      # s = sub layer (e.g. cell subtype composition)
+      for (m in names(data)) {
+        if (m == "pseudobulk") {
+          get_scores_sup_args[["select.var"]] <- list(cos2 = pca_n_hvg)
         } else {
-          results[[cluster_col]][[type]][[layer]] <- NULL
+          get_scores_sup_args["select.var"] <- list(NULL)
         }
 
-      } else if (is.list(scoot_object@composition[[layer]])) {
-        ggplot2::set_last_plot(NULL)
-        results[[cluster_col]][[type]][[layer]] <-
-          BiocParallel::bplapply(
-            X = names(scoot_object@composition[[layer]]),
-            BPPARAM = param,
-            function(i) {
-              mat <- scoot_object@composition[[layer]][[i]][, c("celltype", "clr", "scoot_sample"), with = F]
+        for (l in names(data[[m]])) {
+          message("Processing: ", m, " ", l)
 
-              get_scores_args[["title"]] <- paste(cluster_col,
-                                                  stringr::str_to_title(type),
-                                                  layer,
-                                                  i)
+          # E.g. composition layer_1 has only one feature space (broad cell types)
+          # E.g. composition layer_2 might have multiple feature spaces (CD8T subtypes, CD4T subtypes, ...)
+          if ("feature_matrix" %in% names(data[[m]][[l]])) {
+            get_scores_sup_args[["data"]] <- data[[m]][[l]]
+            get_scores_sup_args[["title"]] <- paste(stringr::str_to_title(m), l)
 
-              if (cluster_by_drop_na) {
-                mat <- mat %>% filter(scoot_sample %in% scoot_object@metadata[["scoot_sample"]])
-              }
-              mat <- mat %>%
-                tidyr::pivot_wider(names_from = scoot_sample,
-                                   values_from = clr) %>%
-                tibble::column_to_rownames(var = "celltype") %>%
-                t() %>%
-                scale(center = TRUE,
-                      scale = FALSE)
+            sample_names <- row.names(data[[m]][[l]][["feature_matrix"]])
+            get_scores_sup_args[["cluster_labels"]] <- scoot_object@metadata %>%
+              dplyr::filter(scoot_sample %in% sample_names) %>%
+              .[[c]]
 
-              if (nrow(mat) >= min_samples) {
-
-                if (is.null(batching))  {
-                  cluster_labels <- scoot_object@metadata %>%
-                    dplyr::filter(scoot_sample %in% row.names(mat)) %>%
-                    .[[cluster_col]]
-
-                  if (nrow(mat) > 1) {
-                    get_scores_args[c("feat_mat", "cluster_labels")] <-
-                      list(feat_mat = mat, cluster_labels = cluster_labels)
-                    res <- do.call(get_scores, get_scores_args)
-                    return(res)
-                  } else {
-                    return(NULL)
-                  }
-                }
-
-                if (!is.null(batching)) {
-                  res <- list()
-                  for (b_var in batching) {
-                    if (b_var != cluster_col) {
-                      b_var_res_summary <- list()
-                      for (b in unique(scoot_object@metadata[[b_var]])) {
-                        meta <- scoot_object@metadata %>%
-                          dplyr::filter(get(b_var) == b) %>%
-                          dplyr::filter(scoot_sample %in% row.names(mat))
-
-                        cluster_labels <- meta[[cluster_col]]
-
-                        m <- mat[ , row.names(mat) %in% as.character(meta[["scoot_sample"]])] %>%
-                          scale(center = TRUE,
-                                scale = FALSE)
-
-                        if (nrow(m) > 1) {
-                          get_scores_args[c("feat_mat", "cluster_labels")] <-
-                            list(feat_mat = m, cluster_labels = cluster_labels)
-                          res[[b_var]][[b]] <-
-                            do.call(get_scores, get_scores_args)
-                        }
-
-                        for (score in scores) {
-                          b_var_res_summary[[score]][["summary"]] <- c(
-                            b_var_res_summary[[score]][["summary"]],
-                            res[[b_var]][[b]][["scores"]][[score]][["summary"]])
-                          b_var_res_summary[[score]][["n"]] <- c(
-                            b_var_res_summary[[score]][["n"]],
-                            res[[b_var]][[b]][["scores"]][[score]][["n"]])
-                          b_var_res_summary[[score]][["p_value"]] <- c(
-                            b_var_res_summary[[score]][["p_value"]],
-                            res[[b_var]][[b]][["scores"]][[score]][["p_value"]])
-                        }
-                      }
-
-                      for (score in scores) {
-                        b_var_res_summary[[score]][["summary"]] <- stats::na.omit(b_var_res_summary[[score]][["summary"]])
-                        b_var_res_summary[[score]][["summary"]] <-
-                          mean(b_var_res_summary[[score]][["summary"]])
-
-                        # Requires the number of samples per batch, so run before summing n
-                        p_values_not_na <- stats::na.omit(b_var_res_summary[[score]][["p_value"]])
-                        p_values_not_na_len <- length(p_values_not_na)
-                        if (p_values_not_na_len > 1) {
-                          b_var_res_summary[[score]] <- combine_pvals(b_var_res_summary[[score]],
-                                                                      pval_combine_method)
-                        } else if (p_values_not_na_len == 1) {
-                          b_var_res_summary[[score]][["p_value"]] <- p_values_not_na
-                        } else {
-                          b_var_res_summary[[score]][["p_value"]] <- NULL
-                          b_var_res_summary[[score]][["summary"]] <- NULL
-                        }
-
-                        b_var_res_summary[[score]][["n"]] <-
-                          sum(b_var_res_summary[[score]][["n"]])
-                      }
-                      res[[b_var]][["all"]][["scores"]] <- b_var_res_summary
-                    }
-                  }
-                  if(length(res) == 0) {
-                    return(NULL)
-                  } else {
-                    return(res)
-                  }
-                }
-              } else {
-                return(NULL)
-              }
-              ggplot2::set_last_plot(NULL)
-            }
-          )
-        names(results[[cluster_col]][[type]][[layer]]) <-
-          names(scoot_object@composition[[layer]])
-      }
-    }
-
-
-    ## Process pseudobulk ###############################################
-    message("\nProcessing Pseudobulks\n")
-
-    type <- "pseudobulk"
-
-    pb_layers <- names(scoot_object@aggregated_profile[[type]])
-
-    # Get black list
-    if (is.null(black_list)) {
-      black_list <- default_black_list
-    }
-    black_list <- unlist(black_list)
-
-    for (layer in pb_layers) {
-      ggplot2::set_last_plot(NULL)
-      results[[cluster_col]][[type]][[layer]] <- BiocParallel::bplapply(
-        X = names(scoot_object@aggregated_profile[[type]][[layer]]),
-        BPPARAM = param,
-        function(i) {
-          mat <- as.matrix(scoot_object@aggregated_profile[[type]][[layer]][[i]])
-
-          get_scores_args[c("title", "invisible", "select_var")] <-
-            list(title = paste(cluster_col,
-                               stringr::str_to_title(type),
-                               layer,
-                               i),
-                 invisible = pca_pb_labs_invisible,
-                 select_var = list(cos2 = pca_n_hvg))
-
-          if (ncol(mat) >= min_samples) {
-
-            # Remove black listed genes from the matrix
-            mat <- mat[!row.names(mat) %in% black_list,]
-
-            meta <- scoot_object@metadata %>%
-              dplyr::filter(scoot_sample %in% colnames(mat))
-            cluster_labels <- meta[[cluster_col]]
-            if (cluster_by_drop_na) {
-              mat <- mat[, colnames(mat) %in% as.character(meta[["scoot_sample"]])]
-            }
-
-            if (is.null(batching))  {
-              if (length(unique(cluster_labels)) > 1) {
-                mat <- DESeq2.normalize(matrix = mat,
-                                        metadata = meta,
-                                        cluster_by = cluster_col,
-                                        nvar_genes = nvar_genes,
-                                        black_list = black_list)
-
-                get_scores_args[c("feat_mat", "cluster_labels")] <-
-                  list(feat_mat = t(mat), cluster_labels = cluster_labels)
-                res <- do.call(get_scores, get_scores_args)
-                return(res)
-              } else {
-                return(NULL)
-              }
-            }
-
-            if (!is.null(batching)) {
-              res <- list()
-              for (b_var in batching) {
-                if (b_var != cluster_col) {
-                  b_var_res_summary <- list()
-                  for (b in unique(scoot_object@metadata[[b_var]])) {
-                    met <- scoot_object@metadata %>%
-                      dplyr::filter(get(b_var) == b) %>%
-                      dplyr::filter(scoot_sample %in% colnames(mat))
-
-                    cluster_labels <- met[[cluster_col]]
-
-                    m <- mat[ , colnames(mat) %in% met[["scoot_sample"]]]
-
-                    if (length(unique(cluster_labels)) > 1) {
-                      m <- DESeq2.normalize(matrix = m,
-                                            metadata = met,
-                                            cluster_by = cluster_col,
-                                            nvar_genes = nvar_genes,
-                                            black_list = black_list)
-
-                      if (nrow(m) > 1) {
-                        get_scores_args[c("feat_mat", "cluster_labels")] <-
-                          list(feat_mat = t(m), cluster_labels = cluster_labels)
-                        res[[b_var]][[b]] <- do.call(get_scores, get_scores_args)
-                      }
-                    }
-                    for (score in scores) {
-                      b_var_res_summary[[score]][["summary"]] <- c(
-                        b_var_res_summary[[score]][["summary"]],
-                        res[[b_var]][[b]][["scores"]][[score]][["summary"]])
-                      b_var_res_summary[[score]][["n"]] <- c(
-                        b_var_res_summary[[score]][["n"]],
-                        res[[b_var]][[b]][["scores"]][[score]][["n"]])
-                      b_var_res_summary[[score]][["p_value"]] <- c(
-                        b_var_res_summary[[score]][["p_value"]],
-                        res[[b_var]][[b]][["scores"]][[score]][["p_value"]])
-                    }
-                  }
-
-                  for (score in scores) {
-                    b_var_res_summary[[score]][["summary"]] <- stats::na.omit(b_var_res_summary[[score]][["summary"]])
-                    b_var_res_summary[[score]][["summary"]] <-
-                      mean(b_var_res_summary[[score]][["summary"]])
-
-                    # Requires the number of samples per batch, so run before summing n
-                    p_values_not_na <- stats::na.omit(b_var_res_summary[[score]][["p_value"]])
-                    p_values_not_na_len <- length(p_values_not_na)
-                    if (p_values_not_na_len > 1) {
-                      b_var_res_summary[[score]] <- combine_pvals(b_var_res_summary[[score]],
-                                                                  pval_combine_method)
-                    } else if (p_values_not_na_len == 1) {
-                      b_var_res_summary[[score]][["p_value"]] <- p_values_not_na
-                    } else {
-                      b_var_res_summary[[score]][["p_value"]] <- NULL
-                      b_var_res_summary[[score]][["summary"]] <- NULL
-                    }
-
-                    b_var_res_summary[[score]][["n"]] <-
-                      sum(b_var_res_summary[[score]][["n"]])
-                  }
-                  res[[b_var]][["all"]][["scores"]] <- b_var_res_summary
-                }
-              }
-              if(length(res) == 0) {
-                return(NULL)
-              } else {
-                return(res)
-              }
-            }
-          } else {
-            return(NULL)
+            results[[c]][[m]][[l]] <- do.call(get_scores_sup, get_scores_sup_args)
           }
-          ggplot2::set_last_plot(NULL)
+
+          else {
+            data[[m]][[l]][sapply(data[[m]][[l]], is.null)] <- NULL
+            nams <- names(data[[m]][[l]])
+            results[[c]][[m]][[l]] <- BiocParallel::bplapply(
+              X = names(data[[m]][[l]]),
+              BPPARAM = param,
+              function(s) {
+                args <- get_scores_sup_args
+                args[["data"]] <- data[[m]][[l]][[s]]
+                args[["title"]] <- paste(stringr::str_to_title(m), l, s)
+
+                sample_names <- row.names(data[[m]][[l]][[s]][["feature_matrix"]])
+                args[["cluster_labels"]] <- scoot_object@metadata %>%
+                  dplyr::filter(scoot_sample %in% sample_names) %>%
+                  .[[c]]
+
+                do.call(get_scores_sup, args)
+              }
+            )
+            names(results[[c]][[m]][[l]]) <- nams
+          }
         }
-      )
-      names(results[[cluster_col]][[type]][[layer]]) <-
-        names(scoot_object@aggregated_profile[[type]][[layer]])
-    }
-    get_scores_args[["select_var"]] <- NULL
-
-
-    ## Process signatures ###############################################
-    message("\nProcessing Signatures\n")
-
-    type <- "signatures"
-
-    comp_layers <- names(scoot_object@aggregated_profile[[type]])
-
-    if (!is.null(comp_layers)) {
-      for (layer in comp_layers) {
-        cols <- colnames(scoot_object@aggregated_profile[[type]][[layer]])
-        signatures <- cols[!cols %in% c("celltype", "scoot_sample")]
-
-        results[[cluster_col]][[type]][[layer]] <- BiocParallel::bplapply(
-          X = signatures,
-          BPPARAM = param,
-          function(i) {
-            mat <- scoot_object@aggregated_profile[[type]][[layer]][, c("celltype", i, "scoot_sample"), with = FALSE]
-
-            get_scores_args[c("title", "invisible")] <-
-              list(title = paste(cluster_col,
-                                 stringr::str_to_title(type),
-                                 layer,
-                                 i),
-                   invisible = pca_sig_labs_invisible)
-
-            if (cluster_by_drop_na) {
-              mat <- mat %>% filter(scoot_sample %in% scoot_object@metadata[["scoot_sample"]])
-            }
-            mat <- mat %>%
-              tidyr::pivot_wider(names_from = scoot_sample, values_from = i) %>%
-              tibble::column_to_rownames(var = "celltype") %>%
-              replace(is.na(.), 0) %>%
-              t() %>%
-              scale(center = TRUE,
-                    scale = TRUE)
-
-            if (nrow(mat) >= min_samples) {
-              if (is.null(batching))  {
-
-                # Drop columns containing NAN, caused by scaling zero variance columns
-                mat <- mat[ , colSums(is.nan(mat)) == 0]
-
-                cluster_labels <- scoot_object@metadata %>%
-                  filter(scoot_sample %in% row.names(mat)) %>%
-                  .[[cluster_col]]
-
-                get_scores_args[c("feat_mat", "cluster_labels")] <-
-                  list(feat_mat = mat, cluster_labels = cluster_labels)
-                res <- do.call(get_scores, get_scores_args)
-                return(res)
-              }
-
-              if (!is.null(batching)) {
-                res <- list()
-                for (b_var in batching) {
-                  if (b_var != cluster_col) {
-                    b_var_res_summary <- list()
-                    for (b in unique(scoot_object@metadata[[b_var]])) {
-                      meta <- scoot_object@metadata %>%
-                        dplyr::filter(get(b_var) == b) %>%
-                        dplyr::filter(scoot_sample %in% row.names(mat))
-
-                      cluster_labels <- meta[[cluster_col]]
-
-                      m <- mat[ , row.names(mat) %in% as.character(meta[["scoot_sample"]])] %>%
-                        scale(center = TRUE,
-                              scale = TRUE)
-
-                      # Drop columns containing NAN, caused by scaling zero variance columns
-                      m <- m[ , colSums(is.nan(m)) == 0]
-
-                      if (ncol(m) >= min_samples) {
-                        get_scores_args[c("feat_mat", "cluster_labels")] <-
-                          list(feat_mat = m, cluster_labels = cluster_labels)
-                        res[[b_var]][[b]] <- do.call(get_scores, get_scores_args)
-
-                        for (score in scores) {
-                          b_var_res_summary[[score]][["summary"]] <- c(
-                            b_var_res_summary[[score]][["summary"]],
-                            res[[b_var]][[b]][["scores"]][[score]][["summary"]])
-                          b_var_res_summary[[score]][["n"]] <- c(
-                            b_var_res_summary[[score]][["n"]],
-                            res[[b_var]][[b]][["scores"]][[score]][["n"]])
-                          b_var_res_summary[[score]][["p_value"]] <- c(
-                            b_var_res_summary[[score]][["p_value"]],
-                            res[[b_var]][[b]][["scores"]][[score]][["p_value"]])
-                        }
-                      }
-
-                      for (score in scores) {
-                        b_var_res_summary[[score]][["summary"]] <- stats::na.omit(b_var_res_summary[[score]][["summary"]])
-                        b_var_res_summary[[score]][["summary"]] <-
-                          mean(b_var_res_summary[[score]][["summary"]])
-
-                        # Requires the number of samples per batch, so run before summing n
-                        p_values_not_na <- stats::na.omit(b_var_res_summary[[score]][["p_value"]])
-                        p_values_not_na_len <- length(p_values_not_na)
-                        if (p_values_not_na_len > 1) {
-                          b_var_res_summary[[score]] <- combine_pvals(b_var_res_summary[[score]],
-                                                                      pval_combine_method)
-                        } else if (p_values_not_na_len == 1) {
-                          b_var_res_summary[[score]][["p_value"]] <- p_values_not_na
-                        } else {
-                          b_var_res_summary[[score]][["p_value"]] <- NULL
-                          b_var_res_summary[[score]][["summary"]] <- NULL
-                        }
-
-                        b_var_res_summary[[score]][["n"]] <-
-                          sum(b_var_res_summary[[score]][["n"]])
-                      }
-                      res[[b_var]][["all"]][["scores"]] <- b_var_res_summary
-                    }
-                  }
-                }
-                if(length(res) == 0) {
-                  return(NULL)
-                } else {
-                  return(res)
-                }
-              }
-            } else {
-              return(NULL)
-            }
-            ggplot2::set_last_plot(NULL)
-          }
-        )
-        names(results[[cluster_col]][[type]][[layer]]) <- signatures
       }
     }
-    ggplot2::set_last_plot(NULL)
-    invisible(gc())
   }
+
+
+
+
+  # ## Supervised ###############################################
+  # if (!is.null(cluster_by)) {
+  #   message("\nSupervised analysis\n")
+  #
+  #   get_scores_sup_args <- list(scores = scores,
+  #                               knn_k = knn_k,
+  #                               ntests = ntests,
+  #                               seed = seed)
+  #
+  #   for (cluster_col in cluster_by) {
+  #     message("Processing ", cluster_col)
+  #
+  #     ## Process celltype composition ###############################################
+  #     message("\nProcessing cell type composition\n")
+  #
+  #     type <- "composition"
+  #
+  #     comp_layers <- names(scoot_object@data[[type]])
+  #
+  #     for (layer in comp_layers) {
+  #
+  #       get_scores_sup_args[c("title", "invisible")] <- list(title = paste(cluster_col,
+  #                                                                          stringr::str_to_title(type),
+  #                                                                          layer),
+  #                                                            invisible = pca_comps_labs_invisible)
+  #
+  #       if (inherits(scoot_object@data[[type]][[layer]], "data.frame")) {
+  #         mat <- scoot_object@data[[type]][[layer]][, c("celltype", "clr", "scoot_sample"), with = FALSE]
+  #
+  #         if (cluster_by_drop_na) {
+  #           mat <- mat %>% filter(scoot_sample %in% scoot_object@metadata[["scoot_sample"]])
+  #         }
+  #         mat <- mat %>%
+  #           tidyr::pivot_wider(names_from = scoot_sample,
+  #                              values_from = clr) %>%
+  #           stats::na.omit() %>%
+  #           tibble::column_to_rownames(var = "celltype") %>%
+  #           t() %>%
+  #           scale(center = TRUE,
+  #                 scale = FALSE)
+  #
+  #         if (nrow(mat) >= min_samples) {
+  #
+  #           if (is.null(batching))  {
+  #             cluster_labels <- scoot_object@metadata %>%
+  #               dplyr::filter(scoot_sample %in% row.names(mat)) %>%
+  #               .[[cluster_col]]
+  #
+  #             get_scores_sup_args[c("feat_mat", "cluster_labels")] <- list(feat_mat = mat,
+  #                                                                          cluster_labels = cluster_labels)
+  #
+  #             results[[cluster_col]][[type]][[layer]] <- do.call(get_scores_sup, get_scores_sup_args)
+  #           }
+  #
+  #           if (!is.null(batching))  {
+  #             for (b_var in batching) {
+  #               if (b_var != cluster_col) {
+  #                 b_var_res_summary <- list()
+  #                 for (b in unique(scoot_object@metadata[[b_var]])) {
+  #                   meta <- scoot_object@metadata %>%
+  #                     dplyr::filter(get(b_var) == b) %>%
+  #                     dplyr::filter(scoot_sample %in% row.names(mat))
+  #
+  #                   cluster_labels <- meta[[cluster_col]]
+  #
+  #                   m <- mat[ , row.names(mat) %in% as.character(meta[["scoot_sample"]])] %>%
+  #                     scale(center = TRUE,
+  #                           scale = FALSE)
+  #
+  #                   get_scores_sup_args[c("feat_mat", "cluster_labels")] <- list(feat_mat = mat,
+  #                                                                                cluster_labels = cluster_labels)
+  #
+  #                   results[[cluster_col]][[type]][[layer]][[b_var]][[b]] <- do.call(get_scores_sup, get_scores_sup_args)
+  #
+  #                   for (score in scores) {
+  #                     b_var_res_summary[[score]][["summary"]] <- c(
+  #                       b_var_res_summary[[score]][["summary"]],
+  #                       results[[cluster_col]][[type]][[layer]][[b_var]][[b]][["scores"]][[score]][["summary"]])
+  #                     b_var_res_summary[[score]][["n"]] <- c(
+  #                       b_var_res_summary[[score]][["n"]],
+  #                       results[[cluster_col]][[type]][[layer]][[b_var]][[b]][["scores"]][[score]][["n"]])
+  #                     b_var_res_summary[[score]][["p_value"]] <- c(
+  #                       b_var_res_summary[[score]][["p_value"]],
+  #                       results[[cluster_col]][[type]][[layer]][[b_var]][[b]][["scores"]][[score]][["p_value"]])
+  #                   }
+  #                 }
+  #
+  #                 for (score in scores) {
+  #                   b_var_res_summary[[score]][["summary"]] <- stats::na.omit(b_var_res_summary[[score]][["summary"]])
+  #                   b_var_res_summary[[score]][["summary"]] <-
+  #                     mean(b_var_res_summary[[score]][["summary"]])
+  #
+  #                   # Requires the number of samples per batch, so run before summing n
+  #                   p_values_not_na <- stats::na.omit(b_var_res_summary[[score]][["p_value"]])
+  #                   p_values_not_na_len <- length(p_values_not_na)
+  #                   if (p_values_not_na_len > 1) {
+  #                     b_var_res_summary[[score]] <- combine_pvals(b_var_res_summary[[score]],
+  #                                                                 pval_combine_method)
+  #                   } else if (p_values_not_na_len == 1) {
+  #                     b_var_res_summary[[score]][["p_value"]] <- p_values_not_na
+  #                   } else {
+  #                     b_var_res_summary[[score]][["p_value"]] <- NULL
+  #                     b_var_res_summary[[score]][["summary"]] <- NULL
+  #                   }
+  #
+  #                   b_var_res_summary[[score]][["n"]] <-
+  #                     sum(b_var_res_summary[[score]][["n"]])
+  #                 }
+  #                 results[[cluster_col]][[type]][[layer]][[b_var]][["all"]][["scores"]] <- b_var_res_summary
+  #               }
+  #             }
+  #           }
+  #         } else {
+  #           results[[cluster_col]][[type]][[layer]] <- NULL
+  #         }
+  #
+  #       } else if (is.list(scoot_object@data[[type]][[layer]])) {
+  #         ggplot2::set_last_plot(NULL)
+  #         results[[cluster_col]][[type]][[layer]] <-
+  #           BiocParallel::bplapply(
+  #             X = names(scoot_object@data[[type]][[layer]]),
+  #             BPPARAM = param,
+  #             function(i) {
+  #               mat <- scoot_object@data[[type]][[layer]][[i]][, c("celltype", "clr", "scoot_sample"), with = F]
+  #
+  #               get_scores_sup_args[["title"]] <- paste(cluster_col,
+  #                                                       stringr::str_to_title(type),
+  #                                                       layer,
+  #                                                       i)
+  #
+  #               if (cluster_by_drop_na) {
+  #                 mat <- mat %>% filter(scoot_sample %in% scoot_object@metadata[["scoot_sample"]])
+  #               }
+  #               mat <- mat %>%
+  #                 tidyr::pivot_wider(names_from = scoot_sample,
+  #                                    values_from = clr) %>%
+  #                 tibble::column_to_rownames(var = "celltype") %>%
+  #                 t() %>%
+  #                 scale(center = TRUE,
+  #                       scale = FALSE)
+  #
+  #               if (nrow(mat) >= min_samples) {
+  #
+  #                 if (is.null(batching))  {
+  #                   cluster_labels <- scoot_object@metadata %>%
+  #                     dplyr::filter(scoot_sample %in% row.names(mat)) %>%
+  #                     .[[cluster_col]]
+  #
+  #                   if (nrow(mat) > 1) {
+  #                     get_scores_sup_args[c("feat_mat", "cluster_labels")] <-
+  #                       list(feat_mat = mat, cluster_labels = cluster_labels)
+  #                     res <- do.call(get_scores_sup, get_scores_sup_args)
+  #                     return(res)
+  #                   } else {
+  #                     return(NULL)
+  #                   }
+  #                 }
+  #
+  #                 if (!is.null(batching)) {
+  #                   res <- list()
+  #                   for (b_var in batching) {
+  #                     if (b_var != cluster_col) {
+  #                       b_var_res_summary <- list()
+  #                       for (b in unique(scoot_object@metadata[[b_var]])) {
+  #                         meta <- scoot_object@metadata %>%
+  #                           dplyr::filter(get(b_var) == b) %>%
+  #                           dplyr::filter(scoot_sample %in% row.names(mat))
+  #
+  #                         cluster_labels <- meta[[cluster_col]]
+  #
+  #                         m <- mat[ , row.names(mat) %in% as.character(meta[["scoot_sample"]])] %>%
+  #                           scale(center = TRUE,
+  #                                 scale = FALSE)
+  #
+  #                         if (nrow(m) > 1) {
+  #                           get_scores_sup_args[c("feat_mat", "cluster_labels")] <-
+  #                             list(feat_mat = m, cluster_labels = cluster_labels)
+  #                           res[[b_var]][[b]] <-
+  #                             do.call(get_scores_sup, get_scores_sup_args)
+  #                         }
+  #
+  #                         for (score in scores) {
+  #                           b_var_res_summary[[score]][["summary"]] <- c(
+  #                             b_var_res_summary[[score]][["summary"]],
+  #                             res[[b_var]][[b]][["scores"]][[score]][["summary"]])
+  #                           b_var_res_summary[[score]][["n"]] <- c(
+  #                             b_var_res_summary[[score]][["n"]],
+  #                             res[[b_var]][[b]][["scores"]][[score]][["n"]])
+  #                           b_var_res_summary[[score]][["p_value"]] <- c(
+  #                             b_var_res_summary[[score]][["p_value"]],
+  #                             res[[b_var]][[b]][["scores"]][[score]][["p_value"]])
+  #                         }
+  #                       }
+  #
+  #                       for (score in scores) {
+  #                         b_var_res_summary[[score]][["summary"]] <- stats::na.omit(b_var_res_summary[[score]][["summary"]])
+  #                         b_var_res_summary[[score]][["summary"]] <-
+  #                           mean(b_var_res_summary[[score]][["summary"]])
+  #
+  #                         # Requires the number of samples per batch, so run before summing n
+  #                         p_values_not_na <- stats::na.omit(b_var_res_summary[[score]][["p_value"]])
+  #                         p_values_not_na_len <- length(p_values_not_na)
+  #                         if (p_values_not_na_len > 1) {
+  #                           b_var_res_summary[[score]] <- combine_pvals(b_var_res_summary[[score]],
+  #                                                                       pval_combine_method)
+  #                         } else if (p_values_not_na_len == 1) {
+  #                           b_var_res_summary[[score]][["p_value"]] <- p_values_not_na
+  #                         } else {
+  #                           b_var_res_summary[[score]][["p_value"]] <- NULL
+  #                           b_var_res_summary[[score]][["summary"]] <- NULL
+  #                         }
+  #
+  #                         b_var_res_summary[[score]][["n"]] <-
+  #                           sum(b_var_res_summary[[score]][["n"]])
+  #                       }
+  #                       res[[b_var]][["all"]][["scores"]] <- b_var_res_summary
+  #                     }
+  #                   }
+  #                   if(length(res) == 0) {
+  #                     return(NULL)
+  #                   } else {
+  #                     return(res)
+  #                   }
+  #                 }
+  #               } else {
+  #                 return(NULL)
+  #               }
+  #               ggplot2::set_last_plot(NULL)
+  #             }
+  #           )
+  #         names(results[[cluster_col]][[type]][[layer]]) <-
+  #           names(scoot_object@data[[type]][[layer]])
+  #       }
+  #     }
+  #
+  #
+  #     ## Process pseudobulk ###############################################
+  #     message("\nProcessing Pseudobulks\n")
+  #
+  #     type <- "pseudobulk"
+  #
+  #     pb_layers <- names(scoot_object@data[[type]])
+  #
+  #     # Get black list
+  #     if (is.null(black_list)) {
+  #       black_list <- default_black_list
+  #     }
+  #     black_list <- unlist(black_list)
+  #
+  #     for (layer in pb_layers) {
+  #       ggplot2::set_last_plot(NULL)
+  #       results[[cluster_col]][[type]][[layer]] <- BiocParallel::bplapply(
+  #         X = names(scoot_object@data[[type]][[layer]]),
+  #         BPPARAM = param,
+  #         function(i) {
+  #           mat <- as.matrix(scoot_object@data[[type]][[layer]][[i]])
+  #
+  #           get_scores_sup_args[c("title", "invisible", "select.var")] <-
+  #             list(title = paste(cluster_col,
+  #                                stringr::str_to_title(type),
+  #                                layer,
+  #                                i),
+  #                  invisible = pca_pb_labs_invisible,
+  #                  select.var = list(cos2 = pca_n_hvg))
+  #
+  #           if (ncol(mat) >= min_samples) {
+  #
+  #             # Remove black listed genes from the matrix
+  #             mat <- mat[!row.names(mat) %in% black_list,]
+  #
+  #             meta <- scoot_object@metadata %>%
+  #               dplyr::filter(scoot_sample %in% colnames(mat))
+  #             cluster_labels <- meta[[cluster_col]]
+  #             if (cluster_by_drop_na) {
+  #               mat <- mat[, colnames(mat) %in% as.character(meta[["scoot_sample"]])]
+  #             }
+  #
+  #             if (is.null(batching))  {
+  #               if (length(unique(cluster_labels)) > 1) {
+  #                 mat <- DESeq2.normalize(matrix = mat,
+  #                                         metadata = meta,
+  #                                         cluster_by = cluster_col,
+  #                                         nvar_genes = nvar_genes,
+  #                                         black_list = black_list)
+  #
+  #                 get_scores_sup_args[c("feat_mat", "cluster_labels")] <-
+  #                   list(feat_mat = t(mat), cluster_labels = cluster_labels)
+  #                 res <- do.call(get_scores_sup, get_scores_sup_args)
+  #                 return(res)
+  #               } else {
+  #                 return(NULL)
+  #               }
+  #             }
+  #
+  #             if (!is.null(batching)) {
+  #               res <- list()
+  #               for (b_var in batching) {
+  #                 if (b_var != cluster_col) {
+  #                   b_var_res_summary <- list()
+  #                   for (b in unique(scoot_object@metadata[[b_var]])) {
+  #                     met <- scoot_object@metadata %>%
+  #                       dplyr::filter(get(b_var) == b) %>%
+  #                       dplyr::filter(scoot_sample %in% colnames(mat))
+  #
+  #                     cluster_labels <- met[[cluster_col]]
+  #
+  #                     m <- mat[ , colnames(mat) %in% met[["scoot_sample"]]]
+  #
+  #                     if (length(unique(cluster_labels)) > 1) {
+  #                       m <- DESeq2.normalize(matrix = m,
+  #                                             metadata = met,
+  #                                             cluster_by = cluster_col,
+  #                                             nvar_genes = nvar_genes,
+  #                                             black_list = black_list)
+  #
+  #                       if (nrow(m) > 1) {
+  #                         get_scores_sup_args[c("feat_mat", "cluster_labels")] <-
+  #                           list(feat_mat = t(m), cluster_labels = cluster_labels)
+  #                         res[[b_var]][[b]] <- do.call(get_scores_sup, get_scores_sup_args)
+  #                       }
+  #                     }
+  #                     for (score in scores) {
+  #                       b_var_res_summary[[score]][["summary"]] <- c(
+  #                         b_var_res_summary[[score]][["summary"]],
+  #                         res[[b_var]][[b]][["scores"]][[score]][["summary"]])
+  #                       b_var_res_summary[[score]][["n"]] <- c(
+  #                         b_var_res_summary[[score]][["n"]],
+  #                         res[[b_var]][[b]][["scores"]][[score]][["n"]])
+  #                       b_var_res_summary[[score]][["p_value"]] <- c(
+  #                         b_var_res_summary[[score]][["p_value"]],
+  #                         res[[b_var]][[b]][["scores"]][[score]][["p_value"]])
+  #                     }
+  #                   }
+  #
+  #                   for (score in scores) {
+  #                     b_var_res_summary[[score]][["summary"]] <- stats::na.omit(b_var_res_summary[[score]][["summary"]])
+  #                     b_var_res_summary[[score]][["summary"]] <-
+  #                       mean(b_var_res_summary[[score]][["summary"]])
+  #
+  #                     # Requires the number of samples per batch, so run before summing n
+  #                     p_values_not_na <- stats::na.omit(b_var_res_summary[[score]][["p_value"]])
+  #                     p_values_not_na_len <- length(p_values_not_na)
+  #                     if (p_values_not_na_len > 1) {
+  #                       b_var_res_summary[[score]] <- combine_pvals(b_var_res_summary[[score]],
+  #                                                                   pval_combine_method)
+  #                     } else if (p_values_not_na_len == 1) {
+  #                       b_var_res_summary[[score]][["p_value"]] <- p_values_not_na
+  #                     } else {
+  #                       b_var_res_summary[[score]][["p_value"]] <- NULL
+  #                       b_var_res_summary[[score]][["summary"]] <- NULL
+  #                     }
+  #
+  #                     b_var_res_summary[[score]][["n"]] <-
+  #                       sum(b_var_res_summary[[score]][["n"]])
+  #                   }
+  #                   res[[b_var]][["all"]][["scores"]] <- b_var_res_summary
+  #                 }
+  #               }
+  #               if(length(res) == 0) {
+  #                 return(NULL)
+  #               } else {
+  #                 return(res)
+  #               }
+  #             }
+  #           } else {
+  #             return(NULL)
+  #           }
+  #           ggplot2::set_last_plot(NULL)
+  #         }
+  #       )
+  #       names(results[[cluster_col]][[type]][[layer]]) <-
+  #         names(scoot_object@data[[type]][[layer]])
+  #     }
+  #     get_scores_sup_args[["select.var"]] <- NULL
+  #
+  #
+  #     ## Process signatures ###############################################
+  #     message("\nProcessing Signatures\n")
+  #
+  #     type <- "signatures"
+  #
+  #     comp_layers <- names(scoot_object@data[[type]])
+  #
+  #     if (!is.null(comp_layers)) {
+  #       for (layer in comp_layers) {
+  #         cols <- colnames(scoot_object@data[[type]][[layer]])
+  #         signatures <- cols[!cols %in% c("celltype", "scoot_sample")]
+  #
+  #         results[[cluster_col]][[type]][[layer]] <- BiocParallel::bplapply(
+  #           X = signatures,
+  #           BPPARAM = param,
+  #           function(i) {
+  #             mat <- scoot_object@data[[type]][[layer]][, c("celltype", i, "scoot_sample"), with = FALSE]
+  #
+  #             get_scores_sup_args[c("title", "invisible")] <-
+  #               list(title = paste(cluster_col,
+  #                                  stringr::str_to_title(type),
+  #                                  layer,
+  #                                  i),
+  #                    invisible = pca_sig_labs_invisible)
+  #
+  #             if (cluster_by_drop_na) {
+  #               mat <- mat %>% filter(scoot_sample %in% scoot_object@metadata[["scoot_sample"]])
+  #             }
+  #             mat <- mat %>%
+  #               tidyr::pivot_wider(names_from = scoot_sample, values_from = i) %>%
+  #               tibble::column_to_rownames(var = "celltype") %>%
+  #               replace(is.na(.), 0) %>%
+  #               t() %>%
+  #               scale(center = TRUE,
+  #                     scale = TRUE)
+  #
+  #             if (nrow(mat) >= min_samples) {
+  #               if (is.null(batching))  {
+  #
+  #                 # Drop columns containing NAN, caused by scaling zero variance columns
+  #                 mat <- mat[ , colSums(is.nan(mat)) == 0]
+  #
+  #                 cluster_labels <- scoot_object@metadata %>%
+  #                   filter(scoot_sample %in% row.names(mat)) %>%
+  #                   .[[cluster_col]]
+  #
+  #                 get_scores_sup_args[c("feat_mat", "cluster_labels")] <-
+  #                   list(feat_mat = mat, cluster_labels = cluster_labels)
+  #                 res <- do.call(get_scores_sup, get_scores_sup_args)
+  #                 return(res)
+  #               }
+  #
+  #               if (!is.null(batching)) {
+  #                 res <- list()
+  #                 for (b_var in batching) {
+  #                   if (b_var != cluster_col) {
+  #                     b_var_res_summary <- list()
+  #                     for (b in unique(scoot_object@metadata[[b_var]])) {
+  #                       meta <- scoot_object@metadata %>%
+  #                         dplyr::filter(get(b_var) == b) %>%
+  #                         dplyr::filter(scoot_sample %in% row.names(mat))
+  #
+  #                       cluster_labels <- meta[[cluster_col]]
+  #
+  #                       m <- mat[ , row.names(mat) %in% as.character(meta[["scoot_sample"]])] %>%
+  #                         scale(center = TRUE,
+  #                               scale = TRUE)
+  #
+  #                       # Drop columns containing NAN, caused by scaling zero variance columns
+  #                       m <- m[ , colSums(is.nan(m)) == 0]
+  #
+  #                       if (ncol(m) >= min_samples) {
+  #                         get_scores_sup_args[c("feat_mat", "cluster_labels")] <-
+  #                           list(feat_mat = m, cluster_labels = cluster_labels)
+  #                         res[[b_var]][[b]] <- do.call(get_scores_sup, get_scores_sup_args)
+  #
+  #                         for (score in scores) {
+  #                           b_var_res_summary[[score]][["summary"]] <- c(
+  #                             b_var_res_summary[[score]][["summary"]],
+  #                             res[[b_var]][[b]][["scores"]][[score]][["summary"]])
+  #                           b_var_res_summary[[score]][["n"]] <- c(
+  #                             b_var_res_summary[[score]][["n"]],
+  #                             res[[b_var]][[b]][["scores"]][[score]][["n"]])
+  #                           b_var_res_summary[[score]][["p_value"]] <- c(
+  #                             b_var_res_summary[[score]][["p_value"]],
+  #                             res[[b_var]][[b]][["scores"]][[score]][["p_value"]])
+  #                         }
+  #                       }
+  #
+  #                       for (score in scores) {
+  #                         b_var_res_summary[[score]][["summary"]] <- stats::na.omit(b_var_res_summary[[score]][["summary"]])
+  #                         b_var_res_summary[[score]][["summary"]] <-
+  #                           mean(b_var_res_summary[[score]][["summary"]])
+  #
+  #                         # Requires the number of samples per batch, so run before summing n
+  #                         p_values_not_na <- stats::na.omit(b_var_res_summary[[score]][["p_value"]])
+  #                         p_values_not_na_len <- length(p_values_not_na)
+  #                         if (p_values_not_na_len > 1) {
+  #                           b_var_res_summary[[score]] <- combine_pvals(b_var_res_summary[[score]],
+  #                                                                       pval_combine_method)
+  #                         } else if (p_values_not_na_len == 1) {
+  #                           b_var_res_summary[[score]][["p_value"]] <- p_values_not_na
+  #                         } else {
+  #                           b_var_res_summary[[score]][["p_value"]] <- NULL
+  #                           b_var_res_summary[[score]][["summary"]] <- NULL
+  #                         }
+  #
+  #                         b_var_res_summary[[score]][["n"]] <-
+  #                           sum(b_var_res_summary[[score]][["n"]])
+  #                       }
+  #                       res[[b_var]][["all"]][["scores"]] <- b_var_res_summary
+  #                     }
+  #                   }
+  #                 }
+  #                 if(length(res) == 0) {
+  #                   return(NULL)
+  #                 } else {
+  #                   return(res)
+  #                 }
+  #               }
+  #             } else {
+  #               return(NULL)
+  #             }
+  #             ggplot2::set_last_plot(NULL)
+  #           }
+  #         )
+  #         names(results[[cluster_col]][[type]][[layer]]) <- signatures
+  #       }
+  #     }
+  #     ggplot2::set_last_plot(NULL)
+  #     invisible(gc())
+  #   }
+  # }
 
   results[["data"]] <- data
 
   # Save user set parameters for summarize_cluster_scores
-  results[["params"]][["cluster_by"]] <- cluster_by
+  results[["params"]][["cluster_by"]] <- c("unsupervised", cluster_by)
   results[["params"]][["batching"]] <- batching
   results[["params"]][["scores"]] <- scores
 
   return(results)
+}
+
+
+
+
+#' Summarize scores and plot global correlation plot
+#'
+#' @param scores Output from get_cluster_scores
+#' @param metadata The metadata from the merged scoot_object
+#'
+#' @importFrom dplyr bind_rows
+#' @importFrom purrr map_df
+#' @importFrom ComplexHeatmap Heatmap
+#' @importFrom mclust adjustedRandIndex
+#'
+#' @return Two plots: 1. a correlation plot showing which clusterings and metadata columns are correlated. 2. correlation based on adjusted rand index.
+#' @export global_corr_plots
+#'
+
+global_corr_plots <- function(scores,
+                              metadata) {
+  data <- scores[["unsupervised"]]
+
+  return_plot_list <- list()
+
+  cluster_label_list <- list()
+
+  for (m in names(data)) {
+    for (l in names(data[[m]])) {
+      if ("clustering" %in% names(data[[m]][[l]])) {
+        my_list <- data[[m]][[l]][["clustering"]]
+        if (!is.null(my_list)) {
+          names(my_list) <- paste(m, l, names(my_list), sep = "_")
+        }
+        cluster_label_list <- c(cluster_label_list, my_list)
+      }
+      else {
+        for (s in names(data[[m]][[l]])) {
+          my_list <- data[[m]][[l]][[s]][["clustering"]]
+          if (!is.null(my_list)) {
+            names(my_list) <- paste(m, l, s, names(my_list), sep = "_")
+          }
+          cluster_label_list <- c(cluster_label_list, my_list)
+        }
+      }
+    }
+  }
+
+  df <- lapply(cluster_label_list, function(x) {
+    row_nams <- names(x)
+    x <- as.numeric(x)
+    names(x) <- row_nams
+    x})
+  df <- as.data.frame(dplyr::bind_rows(df, .id = "df_name"))
+  row.names(df) <- df[,1]
+  df <- df[,-1]
+  df <- t(df)
+
+  row_nams <- metadata[["scoot_sample"]]
+  # Remove metadata columns which have different values for each sample
+  dropcols <- apply(metadata, 2, function(y) length(unique(y))) == nrow(metadata)
+  dropcols_names <- names(dropcols)[dropcols == TRUE]
+  keepcols_names <- !(colnames(metadata) %in% dropcols_names)
+  metadata <- metadata[, keepcols_names]
+
+  metadata <- purrr::map_df(metadata, function(x) {as.factor(x)})
+  metadata <- as.data.frame(metadata)
+  row.names(metadata) <- row_nams
+
+  df <- as.data.frame(df)
+  df <- merge(metadata, df, by="row.names")
+  row_nams <- df[,1]
+  df <- df[,-1]
+
+  df <- purrr::map_df(df, function(x) {as.numeric(x)})
+  df <- as.data.frame(df)
+  row.names(df) <- row_nams
+
+  # Convert NA to zero
+  df[is.na(df)] <- 0
+
+  df_num <- df
+
+  df <- purrr::map_df(df, function(x) {as.factor(x)})
+  df <- as.data.frame(df)
+  row.names(df) <- row_nams
+
+  return_plot_list[["corr_plot"]] <- ComplexHeatmap::Heatmap(abs(cor(df_num)))
+
+
+  # Get the column names for clusterings
+  cluster_columns <- colnames(df)
+
+  # Initialize an empty matrix to store ARI values
+  ari_matrix <- matrix(NA, ncol = length(cluster_columns), nrow = length(cluster_columns),
+                       dimnames = list(cluster_columns, cluster_columns))
+
+  # Compute ARI for each pair of cluster columns
+  for (i in cluster_columns) {
+    for (j in cluster_columns) {
+      ari_value <- mclust::adjustedRandIndex(df[, i], df[, j])
+      ari_matrix[i, j] <- ari_value
+      ari_matrix[j, i] <- ari_value  # Fill in symmetric entries
+    }
+  }
+
+  # Visualize the ARI matrix as a heatmap
+  return_plot_list[["ari_plot"]] <- ComplexHeatmap::Heatmap(ari_matrix)
+
+  return(return_plot_list)
 }
 
 
@@ -1937,7 +2164,7 @@ composition_barplot <- function(scoot_object = NULL,
   }
 
 
-  comps <- scoot_object@composition[[layer]]
+  comps <- scoot_object@data[[type]][[layer]]
   meta <- scoot_object@metadata
 
   if (!is.null(facet_by)) {
@@ -1971,7 +2198,7 @@ composition_barplot <- function(scoot_object = NULL,
   else {
     p_list <- list()
     for (ct in names(comps)) {
-      comp <- scoot_object@composition[[layer]][[ct]]
+      comp <- scoot_object@data[[type]][[layer]][[ct]]
       comp <- merge(comp, meta[, c(sample_col, facet_by), drop=FALSE], by = sample_col)
 
       p_list[["plot_list"]][[ct]] <- ggplot(comp, aes(x = scoot_sample, y = freq, fill = celltype)) +
@@ -2075,7 +2302,7 @@ composition_boxplot <- function(scoot_object = NULL,
     }
   }
 
-  comps <- scoot_object@composition[[layer]]
+  comps <- scoot_object@data[[type]][[layer]]
   meta <- scoot_object@metadata
 
   plot_var_gg <- sym(plot_var)
@@ -2141,7 +2368,7 @@ composition_boxplot <- function(scoot_object = NULL,
   else {
     p_list <- list()
     for (ct in names(comps)) {
-      comp <- scoot_object@composition[[layer]][[ct]]
+      comp <- scoot_object@data[[type]][[layer]][[ct]]
       comp <- merge(comp, meta[, c(sample_col, group_by, facet_by), drop=FALSE], by = sample_col)
 
       # Need to check if group_by is NULL
