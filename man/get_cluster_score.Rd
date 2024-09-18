@@ -12,18 +12,15 @@ get_cluster_score(
   batching = NULL,
   scores = c("silhouette_isolated", "modularity"),
   dist_method = "euclidean",
-  clust_method = c("pam_clust", "h_clust"),
   knn_k = "auto",
   max_nc = 5,
   n_clust = "auto",
-  hdbscan_min_pts = 3,
   NbClust_method = "ward.D2",
+  show_clustering = TRUE,
+  heatmap_metadata_cols = NULL,
   ntests = 100,
-  seed = 22,
+  seed = 0,
   pval_combine_method = "weighted_zmethod",
-  pca_comps_labs_invisible = c("quali"),
-  pca_pb_labs_invisible = c("quali"),
-  pca_sig_labs_invisible = c("quali"),
   nvar_genes = 500,
   black_list = NULL,
   pca_n_hvg = 20,
@@ -33,7 +30,7 @@ get_cluster_score(
 )
 }
 \arguments{
-\item{scoot_object}{A scoot class object obtained with \link{scoot_object} or pseudobulk raw count matrix (\code{scootObject@aggregated_profile$pseudobulk$layer_1})}
+\item{scoot_object}{A scoot class object obtained with \link{scoot_object} or pseudobulk raw count matrix (\code{scootObject@data[["pseudobulk"]]layer_1})}
 
 \item{cluster_by}{Vector indicating the variable for clustering, default is celltype (for the annotation) and sample}
 
@@ -53,15 +50,11 @@ get_cluster_score(
 
 \item{NbClust_method}{Hierarchical clustering method for fastNbClust (improved version of NbClust::NbClust).}
 
+\item{show_clustering}{Boolean indicating whether to show the clustering annotation results on the heatmaps}
+
 \item{ntests}{Number of shuffling events to calculate p-value for scores}
 
 \item{seed}{Set seed for random shuffling events to calculate p-value for scores}
-
-\item{pca_comps_labs_invisible}{Parameter to pass to fviz_pca defining which labels to plot for composition PCA, see documentation of fviz_pca for details.}
-
-\item{pca_pb_labs_invisible}{Parameter to pass to fviz_pca defining which labels to plot for pseudobulk PCA, see documentation of fviz_pca for details.}
-
-\item{pca_sig_labs_invisible}{Parameter to pass to fviz_pca defining which labels to plot for signatures PCA, see documentation of fviz_pca for details.}
 
 \item{nvar_genes}{Number of variable genes to assess samples. Default is 500.}
 
