@@ -64,7 +64,8 @@ Imports:
   cluster (>= 2.1.6),
   cccd (>= 1.6),
   fastcluster (>= 1.2.6),
-  mclust (>= 6.1.1)
+  mclust (>= 6.1.1),
+  ComplexHeatmap(>= 2.20.0)
 Suggests: 
     knitr,
     rmarkdown,
