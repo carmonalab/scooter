@@ -594,59 +594,78 @@ get_scores_unsup <- function(data,
       )
 
 
-    # Heatmaps ###############################################
+    # Plot hclust heatmap ###############################################
 
-    # Subset metadata to samples present in feat_mat
-    row.names(metadata) <- metadata[["scoot_sample"]]
-    metadata <- metadata[row.names(feat_mat), heatmap_metadata_cols]
+    # # Subset metadata to samples present in feat_mat
+    # row.names(metadata) <- metadata[["scoot_sample"]]
+    # metadata <- metadata[row.names(feat_mat), ]
+    #
+    # if (show_clustering) {
+    #   # Add clustering labels
+    #   for (c in names(results[["clustering"]])) {
+    #     metadata[, c] <- results[["clustering"]][[c]]
+    #   }
+    #   heatmap_cols <- c(heatmap_cols, names(results[["clustering"]]))
+    #
+    #   metadata <- metadata[, heatmap_cols]
+    #
+    #   # Remove metadata columns which have different values for each sample
+    #   dropcols <- apply(metadata, 2, function(y) length(unique(y))) == nrow(metadata)
+    #   dropcols_names <- names(dropcols)[dropcols == TRUE]
+    #   keepcols_names <- !(colnames(metadata) %in% dropcols_names)
+    #   metadata <- metadata[, keepcols_names]
+    #
+    #
+    #   # Reorder metadata for annotation_rows
+    #   annotations <- metadata[row.names(corMat), ]
+    #   ha <- ComplexHeatmap::rowAnnotation(df = annotations)
+    # } else {
+    #   ha <- NULL
+    # }
 
-    if (show_clustering) {
-      # Add clustering labels
-      for (c in names(results[["clustering"]])) {
-        metadata[, c] <- results[["clustering"]][[c]]
-      }
-      heatmap_metadata_cols <- c(heatmap_metadata_cols, names(results[["clustering"]]))
-    }
-
-    metadata <- metadata[, heatmap_metadata_cols]
-
-    # Remove metadata columns which have different values for each sample
-    dropcols <- apply(metadata, 2, function(y) length(unique(y))) == nrow(metadata)
-    dropcols_names <- names(dropcols)[dropcols == TRUE]
-    keepcols_names <- !(colnames(metadata) %in% dropcols_names)
-    metadata <- metadata[, keepcols_names]
+    # ha <- NULL
+    #
+    # # Plot correlation heatmap
+    # results[["plots"]][["hclust_hmap"]] <- ComplexHeatmap::Heatmap(scale(t(feat_mat)),
+    #                                                                top_annotation = ha
+    # ) %>%
+    #   ggplotify::as.ggplot() +
+    #   ggplot2::ggtitle("Heatmap hierarchically clustered")
 
 
-    corMat <- cor(t(feat_mat), method = "pearson")
 
-    # Reorder metadata for annotation_rows
-    annotations <- metadata[row.names(corMat), ]
-    ha <- ComplexHeatmap::rowAnnotation(df = annotations)
+#     corMat <- cor(t(feat_mat), method = "pearson")
+#
+#     if (show_clustering) {
+#       # Reorder metadata for annotation_rows
+#       annotations <- metadata[row.names(corMat), ]
+#       ha <- ComplexHeatmap::rowAnnotation(df = annotations)
+#     }
+#
+#     # Plot correlation heatmap
+#     results[["plots"]][["corr_hmap"]] <- ComplexHeatmap::Heatmap(corMat,
+#                                                                  left_annotation = ha
+#     ) %>%
+#       ggplotify::as.ggplot() +
+#       ggplot2::ggtitle("Correlation heatmap")
+#
+#     # Plot correlation heatmap sorted by dist_matrix
+#     results[["plots"]][["corr_hmap_distsort"]] <- ComplexHeatmap::Heatmap(corMat,
+#                                                                           clustering_distance_columns = as.dist(dist_mat),
+#                                                                           clustering_distance_rows = as.dist(dist_mat),
+#                                                                           left_annotation = ha
+#     ) %>%
+#       ggplotify::as.ggplot() +
+#       ggplot2::ggtitle("Correlation heatmap sorted by distance matrix")
 
-    # Plot correlation heatmap
-    results[["plots"]][["corr_hmap"]] <- ComplexHeatmap::Heatmap(corMat,
-                                                                 left_annotation = ha
-    ) %>%
-      ggplotify::as.ggplot() +
-      ggplot2::ggtitle("Correlation heatmap")
-
-    # Plot correlation heatmap sorted by dist_matrix
-    results[["plots"]][["corr_hmap_distsort"]] <- ComplexHeatmap::Heatmap(corMat,
-                                                                          clustering_distance_columns = as.dist(dist_mat),
-                                                                          clustering_distance_rows = as.dist(dist_mat),
-                                                                          left_annotation = ha
-    ) %>%
-      ggplotify::as.ggplot() +
-      ggplot2::ggtitle("Correlation heatmap sorted by distance matrix")
 
     # Combine plots ###############################################
 
     results[["plots"]][["summary_plot"]] <-
       patchwork::wrap_plots(results[["plots"]][["pca_loadings"]],
                             results[["plots"]][["pca_samples"]],
+                            # results[["plots"]][["hclust_hmap"]],
                             results[["plots"]][["combined"]],
-                            results[["plots"]][["corr_hmap"]],
-                            results[["plots"]][["corr_hmap_distsort"]],
                             ncol = 2) +
       patchwork::plot_layout(widths = 1) +
       patchwork::plot_annotation(title,
@@ -703,7 +722,8 @@ get_scores_sup <- function(data,
                            ntests,
                            seed,
                            title = "", # Title for summary plot
-                           select.var) {
+                           select.var,
+                           heatmap_annotations_title) {
 
   feat_mat <- data[["feature_matrix"]]
   dist_mat <- data[["distance_matrix"]]
@@ -738,6 +758,7 @@ get_scores_sup <- function(data,
 
 
     # Plot PCA ###############################################
+
     results[["plots"]][["pca_loadings"]] <- plot_pca(feat_mat,
                                                      color_cluster_by = cluster_labels,
                                                      label = "var",
@@ -752,10 +773,25 @@ get_scores_sup <- function(data,
       ggplot2::ggtitle("PCA showing sample names")
 
 
+    # # Plot hclust heatmap ###############################################
+    #
+    # ha <- data.frame(column1 = cluster_labels)
+    # row.names(ha) <- names(cluster_labels)
+    # colnames(ha) <- heatmap_annotations_title
+    #
+    # # Plot correlation heatmap
+    # results[["plots"]][["hclust_hmap"]] <- ComplexHeatmap::Heatmap(scale(t(feat_mat)),
+    #                                                                top_annotation = ha
+    # ) %>%
+    #   ggplotify::as.ggplot() +
+    #   ggplot2::ggtitle("Heatmap hierarchically clustered")
+
+
     # Combine plots ###############################################
 
     results[["plots"]][["summary_plot"]] <- patchwork::wrap_plots(results[["plots"]][["pca_loadings"]],
                                                                   results[["plots"]][["pca_samples"]],
+                                                                  # results[["plots"]][["hclust_hmap"]],
                                                                   results[["plots"]][["combined"]],
                                                                   ncol = 2) +
       patchwork::plot_layout(widths = 1) +
