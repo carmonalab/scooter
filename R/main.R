@@ -2070,6 +2070,53 @@ summarize_cluster_scores <- function(data = NULL,
 
 
 
+summarized_scores_barplot <- function (summarized_scores) {
+
+  plot_list <- list()
+
+  for (i in names(summarized_scores)[!names(summarized_scores) %in% "plots"]) {
+    mean_score <- (summarized_scores[[i]]$silhouette_isolated.summary +
+                     summarized_scores[[i]]$modularity.summary) / 2
+    names(mean_score) <- row.names(summarized_scores[[i]])
+    mean_pvalue <- (summarized_scores[[i]]$silhouette_isolated.p_value +
+                      summarized_scores[[i]]$modularity.p_value) / 2
+
+    # Create data frame for ggplot
+    df <- data.frame(group = unlist(lapply(stringr::str_split(names(mean_score), "\\.", n = 2), "[[", 2)),
+                     value = mean_score,
+                     type = factor(unlist(lapply(stringr::str_split(names(mean_score), "\\.", n = 2), "[[", 1))),
+                     p_value = mean_pvalue)
+
+    # Set significance levels
+    significance_levels <- c("***", "**", "*", "")
+
+    # Plot using ggplot2
+    plot_list[["plots"]][[i]] <- ggplot(df, aes(x = group, y = value)) +
+      geom_bar(stat = "identity", fill = "skyblue", color = "black") +
+      facet_grid(. ~ type, scales='free_x', space = "free") +
+      labs(title = paste0(i, " - Barplot showing how strong each feature space separates groups"),
+           x = "Group", y = "Value") +
+      theme_bw() +
+      xlab("Feature spaces") +
+      ylab("Separation score\n(sum of silhouette and modularity score)") +
+      geom_text(aes(label = ifelse(p_value <= 0.001, "***",
+                                   ifelse(p_value <= 0.01, "**",
+                                          ifelse(p_value <= 0.05, "*", "")))),
+                vjust = -0.5, size = 5) +
+      ylim(NA, max(df$value) * 1.2) + # Adjust ylim for better spacing
+      theme(axis.text.x = element_text(angle = 30, hjust = 1)) # Rotate x-axis labels for better readability
+  }
+
+  plot_list[["summary_plot"]] <- patchwork::wrap_plots(plot_list[["plots"]], ncol = 1)
+
+  summarized_scores[["plots"]][["barplots"]] <- plot_list
+  print(plot_list[["summary_plot"]])
+
+  return(summarized_scores)
+}
+
+
+
 
 #' Render plots summarizing celltype proportions and distribution in samples
 #'
