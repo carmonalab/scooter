@@ -1144,6 +1144,8 @@ get_cluster_score <- function(scoot_object = NULL,
     for (c in cluster_by) {
       message("Processing: ", c)
 
+      get_scores_sup_args[["heatmap_annotations_title"]] <- c
+
       # m = modality (e.g. composition)
       # l = layer (e.g. containing broad cell types or cell subtypes)
       # s = sub layer (e.g. cell subtype composition)
@@ -1166,7 +1168,8 @@ get_cluster_score <- function(scoot_object = NULL,
             sample_names <- row.names(data[[m]][[l]][["feature_matrix"]])
             get_scores_sup_args[["cluster_labels"]] <- scoot_object@metadata %>%
               dplyr::filter(scoot_sample %in% sample_names) %>%
-              .[[c]]
+              .[[c]] %>%
+              setNames(sample_names)
 
             results[[c]][[m]][[l]] <- do.call(get_scores_sup, get_scores_sup_args)
           }
@@ -1185,7 +1188,8 @@ get_cluster_score <- function(scoot_object = NULL,
                 sample_names <- row.names(data[[m]][[l]][[s]][["feature_matrix"]])
                 args[["cluster_labels"]] <- scoot_object@metadata %>%
                   dplyr::filter(scoot_sample %in% sample_names) %>%
-                  .[[c]]
+                  .[[c]] %>%
+                  setNames(sample_names)
 
                 do.call(get_scores_sup, args)
               }
@@ -2164,7 +2168,7 @@ composition_barplot <- function(scoot_object = NULL,
   }
 
 
-  comps <- scoot_object@data[[type]][[layer]]
+  comps <- scoot_object@data[["composition"]][[layer]]
   meta <- scoot_object@metadata
 
   if (!is.null(facet_by)) {
@@ -2198,7 +2202,7 @@ composition_barplot <- function(scoot_object = NULL,
   else {
     p_list <- list()
     for (ct in names(comps)) {
-      comp <- scoot_object@data[[type]][[layer]][[ct]]
+      comp <- scoot_object@data[["composition"]][[layer]][[ct]]
       comp <- merge(comp, meta[, c(sample_col, facet_by), drop=FALSE], by = sample_col)
 
       p_list[["plot_list"]][[ct]] <- ggplot(comp, aes(x = scoot_sample, y = freq, fill = celltype)) +
@@ -2302,7 +2306,7 @@ composition_boxplot <- function(scoot_object = NULL,
     }
   }
 
-  comps <- scoot_object@data[[type]][[layer]]
+  comps <- scoot_object@data[["composition"]][[layer]]
   meta <- scoot_object@metadata
 
   plot_var_gg <- sym(plot_var)
@@ -2368,7 +2372,7 @@ composition_boxplot <- function(scoot_object = NULL,
   else {
     p_list <- list()
     for (ct in names(comps)) {
-      comp <- scoot_object@data[[type]][[layer]][[ct]]
+      comp <- scoot_object@data[["composition"]][[layer]][[ct]]
       comp <- merge(comp, meta[, c(sample_col, group_by, facet_by), drop=FALSE], by = sample_col)
 
       # Need to check if group_by is NULL
@@ -2419,3 +2423,6 @@ composition_boxplot <- function(scoot_object = NULL,
     }
   }
 }
+
+
+
