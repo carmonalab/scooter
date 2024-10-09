@@ -1272,7 +1272,77 @@ combine_pvals <- function(list_pvals_n,
 }
 
 
-# Temporary functions ##############################################################################
+
+
+# feature_corr_plot helper functions ##############################################################################
+
+#' @importFrom stats cor
+
+# Function to calculate Pearson correlation between distance matrices without dropping or imputing
+correlation_between_dms <- function(dm1, dm2) {
+  # Extract row and column names
+  rows_dm1 <- row.names(dm1)
+  cols_dm1 <- colnames(dm1)
+  rows_dm2 <- row.names(dm2)
+  cols_dm2 <- colnames(dm2)
+
+  # Find common samples
+  common_samples <- intersect(rows_dm1, rows_dm2)
+
+  if (length(common_samples) >= 10) {
+    # Ensure common samples are in the same order in both matrices
+    dm1_common <- dm1[common_samples, common_samples]
+    dm2_common <- dm2[common_samples, common_samples]
+
+    corrs <- c()
+
+    # Convert rows to ranks
+    dm1_common_ranks <- t(apply(data.frame(dm1_common), 1, rank))
+    dm2_common_ranks <- t(apply(data.frame(dm2_common), 1, rank))
+
+    # Flatten matrices into vectors
+    dm1_flat <- as.vector(dm1_common_ranks)
+    dm2_flat <- as.vector(dm2_common_ranks)
+
+    # Calculate Pearson correlation
+    corrs[i] <- stats::cor(dm1_flat, dm2_flat)
+
+    return(corrs)
+  }
+}
+
+
+get_dist_mats <- function(scores) {
+  data <- scores[["data"]]
+
+  dm_list <- list()
+
+  for (m in names(data)) {
+    for (l in names(data[[m]])) {
+      if ("distance_matrix" %in% names(data[[m]][[l]])) {
+        dm <- data[[m]][[l]][["distance_matrix"]]
+        if (!is.null(dm)) {
+          dm_list[[paste0(c(m,l), collapse = "_")]] <- dm
+        }
+      }
+      else {
+        for (s in names(data[[m]][[l]])) {
+          dm <- data[[m]][[l]][[s]][["distance_matrix"]]
+          if (!is.null(dm)) {
+            dm_list[[paste0(c(m,l,s), collapse = "_")]] <- dm
+          }
+        }
+      }
+    }
+  }
+
+  return(dm_list)
+}
+
+
+
+
+# Plot L1, L2, and L3 summary PCA ##############################################################################
 
 scores_composite_pca <- function(scores,
                                  scoot_summary

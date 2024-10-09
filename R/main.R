@@ -2490,3 +2490,80 @@ composition_boxplot <- function(scoot_object = NULL,
 
 
 
+
+#' Plot a heatmap showing feature correlations
+#'
+#' Feature correlation is determined by sample structure.
+#' Imagine that sample (s) s1 is closest to s2, then s3, s4, ... based on cell type composition (feature space 1).
+#' Based on pseudobulk (feature space 2) s1 is closest to s3, s2, s4, ... .
+#' A signature (feature space 3) might order your samples as s1 closest to s10, s9, s8, ... .
+#' So, cell type composition and pseudobulk show a very similar neighbourhood for sample s1, whereas the signature gives a very different neighbourhood structure.
+#' Of course, all samples are taken into consideration to see which feature spaces structure your samples in a similar neighbourhood structure.
+#' Technically, the distance matrix (dm) of each feature space is converted to ranks (to account for different scaling of feature space distances and for outliers).
+#' For each dm separately, all rows are concatenated into one long dm vector (dm1 vector, dm2 vector, etc.).
+#' For each dm vector the correlation to all other dm vectors are calculated.
+#' The result is a correlation matrix, showing how similar each feature space structures the samples compared to all other feature spaces.
+#' A high correlation = 1 between dm1 and dm2 means that they both structure samples in the way (each sample is close to the same neighbours in dm1 as in dm2)
+#'
+#' @param scores Output from get_cluster_score
+#' @param min_samples Minimum number of samples. If a feature space has less than min_samples, it will not be included in the heatmap plot
+#' @param ComplexHeatmap_args List to provide arguments for ComplexHeatmap::Heatmap, see ?ComplexHeatmap::Heatmap for details.
+#'
+#' @importFrom ComplexHeatmap Heatmap draw
+#' @importFrom dplyr bind_rows
+#'
+#' @return A heatmap showing feature correlations.
+#' @export feature_corr_plot
+#'
+
+feature_corr_plot <- function (scores = NULL,
+                               min_samples = 10,
+                               ComplexHeatmap_args = list(col = rev(brewer.pal(n = 7, name = "RdYlBu")),
+                                                          rect_gp = grid::gpar(col = "grey", lwd = 1),
+                                                          column_names_max_height = unit(16, "cm"),
+                                                          row_names_max_width = unit(16, "cm"),
+                                                          heatmap_legend_param = list(
+                                                            title = "Correlation",
+                                                            legend_height = unit(4, "cm"),
+                                                            title_position = "lefttop-rot"
+                                                          )
+                               ),
+                               plot = TRUE) {
+
+  if (is.null(scores)) {
+    stop("Please provide a scores object")
+  }
+
+  # Get a list of all distance matrices from all feature spaces in the scores
+  dm_list <- get_dist_mats(scores)
+
+  # Subset to feature spaces which have at least min_samples
+  dm_list <- dm_list[sapply(dm_list, function(x){dim(x)[1] >= min_samples})]
+
+  corr_df <- data.frame()
+
+  for (i in names(dm_list)) {
+    vec <- c()
+    nams <- c()
+    for (j in names(dm_list)) {
+      vec1 <- as.numeric(correlation_between_dms(dm_list[[i]], dm_list[[j]])[1])
+      if(length(vec1) > 0){
+        vec <- c(vec, vec1)
+        nams <- c(nams, j)
+      }
+    }
+    names(vec) <- nams
+    corr_df <- dplyr::bind_rows(corr_df, vec)
+  }
+
+  colnames(corr_df) <- nams
+  row.names(corr_df) <- nams
+
+  if (plot) {
+    Heatmap_args["matrix"] <- corr_df
+    hm <- do.call(ComplexHeatmap::Heatmap, Heatmap_args)
+    ComplexHeatmap::draw(hm, heatmap_legend_side = c("left"))
+  }
+
+  return(corr_df)
+}
