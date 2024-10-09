@@ -2069,13 +2069,31 @@ summarize_cluster_scores <- function(data = NULL,
 
 
 
+#' Create a bar plot from summarized scores
+#'
+#' @param summarized_scores Output from summarize_cluster_scores
+#'
+#' @importFrom stringr str_split
+#' @importFrom ggplot2 ggplot aes geom_bar facet_grid labs theme_bw xlab ylab geom_text ylim theme element_text
+#' @importFrom patchwork wrap_plots
+#'
+#' @return Summarize scores as bar plot
+#' @export summarized_scores_barplot
+#'
+
 summarized_scores_barplot <- function (summarized_scores) {
 
   plot_list <- list()
 
   for (i in names(summarized_scores)[!names(summarized_scores) %in% "plots"]) {
-    mean_score <- (summarized_scores[[i]]$silhouette_isolated.summary +
-                     summarized_scores[[i]]$modularity.summary) / 2
+    x <- data.frame(summarized_scores[[i]]$silhouette_isolated.summary,
+                    summarized_scores[[i]]$modularity.summary) %>%
+      t() %>%
+      data.frame()
+    x[x < 0] <- 0.001
+    mean_score <- sapply(x, function(x) {exp(mean(log(x)))})
+    # mean_score <- (summarized_scores[[i]]$silhouette_isolated.summary +
+    #                  summarized_scores[[i]]$modularity.summary) / 2
     names(mean_score) <- row.names(summarized_scores[[i]])
     mean_pvalue <- (summarized_scores[[i]]$silhouette_isolated.p_value +
                       summarized_scores[[i]]$modularity.p_value) / 2
