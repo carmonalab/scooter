@@ -255,7 +255,7 @@ get_cluster_score_pre_proc <- function(scoot_object,
             tidyr::pivot_wider(names_from = scoot_sample,
                                values_from = i) %>%
             tibble::column_to_rownames(var = "celltype") %>%
-            replace(is.na(.), 0) %>%
+            replace(is.na(.), 0) %>%    # Replace NAs with zero
             t() %>%
             scale(center = TRUE,
                   scale = TRUE) %>%
@@ -448,7 +448,7 @@ get_scores_unsup <- function(data,
       clus_scores <- do.call(calc_scores, args_list)
       clus_scores_summary <- lapply(clus_scores[["scores"]], function (x) {x[["summary"]]})
       clus_scores_summary <- unlist(clus_scores_summary[!is.null(clus_scores_summary)])
-      score_title <- paste0(paste(names(clus_scores), "=", round(clus_scores_summary, 3)), collapse = "\n")
+      score_title <- paste0(paste(scores, "=", round(clus_scores_summary, 3)), collapse = "\n")
 
       clus_scores_list[["hclust"]] <- clus_scores
       results[["clustering"]][["hclust_labels"]] <- cluster_labels_unsup
@@ -492,7 +492,7 @@ get_scores_unsup <- function(data,
       clus_scores <- do.call(calc_scores, args_list)
       clus_scores_summary <- lapply(clus_scores[["scores"]], function (x) {x[["summary"]]})
       clus_scores_summary <- unlist(clus_scores_summary[!is.null(clus_scores_summary)])
-      score_title <- paste0(paste(names(clus_scores), "=", round(clus_scores_summary, 3)), collapse = "\n")
+      score_title <- paste0(paste(scores, "=", round(clus_scores_summary, 3)), collapse = "\n")
 
       clus_scores_list[["pam"]] <- clus_scores
       results[["clustering"]][["pam_labels"]] <- cluster_labels_unsup
@@ -518,7 +518,7 @@ get_scores_unsup <- function(data,
       clus_scores <- do.call(calc_scores, args_list)
       clus_scores_summary <- lapply(clus_scores[["scores"]], function (x) {x[["summary"]]})
       clus_scores_summary <- unlist(clus_scores_summary[!is.null(clus_scores_summary)])
-      score_title <- paste0(paste(names(clus_scores), "=", round(clus_scores_summary, 3)), collapse = "\n")
+      score_title <- paste0(paste(scores, "=", round(clus_scores_summary, 3)), collapse = "\n")
 
       clus_scores_list[["gmm"]] <- clus_scores
       results[["clustering"]][["gmm_labels"]] <- cluster_labels_unsup
@@ -564,7 +564,7 @@ get_scores_unsup <- function(data,
       clus_scores <- do.call(calc_scores, args_list)
       clus_scores_summary <- lapply(clus_scores[["scores"]], function (x) {x[["summary"]]})
       clus_scores_summary <- unlist(clus_scores_summary[!is.null(clus_scores_summary)])
-      score_title <- paste0(paste(names(clus_scores), "=", round(clus_scores_summary, 3)), collapse = "\n")
+      score_title <- paste0(paste(scores, "=", round(clus_scores_summary, 3)), collapse = "\n")
 
       clus_scores_list[["leiden"]] <- clus_scores
       results[["clustering"]][["leiden_labels"]] <- cluster_labels_unsup
