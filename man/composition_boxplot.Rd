@@ -11,8 +11,6 @@ composition_boxplot(
   return_plot_to_var = FALSE,
   group_by = NULL,
   facet_by = NULL,
-  pval_method = "wilcox.test",
-  p_adjust_method = "BH",
   palette = "lancet",
   legend_position = "right"
 )
@@ -30,17 +28,17 @@ composition_boxplot(
 
 \item{facet_by}{This allows you to pass a metadata column name present in your scoot_object$metadata to show your samples in facets with ggplot facet_grid, for example by "condition".}
 
-\item{pval_method}{Specify method how to calculate the p-value. Wilcoxon test is recommended as compositional data might not fullfill the assumption of a gaussian distribution. For alternatives, see documentation of ggpubr::stat_pwc.}
-
-\item{p_adjust_method}{Method for adjusting p-values (see ggpubr::stat_pwc for available methods)}
-
 \item{palette}{Choose a palette of your liking. For available palettes, see ggsci package. Default: "lancet"}
 
 \item{legend_position}{Where to put the legend. Possible options: "top", "right", "bottom", "left"}
+
+\item{p_adjust_method}{Method for adjusting p-values (see ggpubr::stat_pwc for available methods)}
 }
 \value{
 Plotting function to show the cell type composition from scoot object across different samples.
 }
 \description{
-Render box plots summarizing celltype proportions and distribution in samples and groups
+Important note about significance testing: ggpubr::stat_compare_means is used for significance testing.
+This means that p-values are not adjusted for multiple testing. Also, if there are more than two groups, per variable (cell type) it is tested whether there is a difference between the means (but not which one).
+If any difference in means is found, this indicates to do subsequent pairwise comparisons to find which means are different.
 }

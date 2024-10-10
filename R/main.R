@@ -2296,6 +2296,9 @@ composition_barplot <- function(scoot_object = NULL,
 
 #' Render box plots summarizing celltype proportions and distribution in samples and groups
 #'
+#' Important note about significance testing: ggpubr::stat_compare_means is used for significance testing.
+#' This means that p-values are not adjusted for multiple testing. Also, if there are more than two groups, per variable (cell type) it is tested whether there is a difference between the means (but not which one).
+#' If any difference in means is found, this indicates to do subsequent pairwise comparisons to find which means are different.
 #'
 #' @param scoot_object A scoot class object (typically after applying merge_scoot_objects onto a list of scootObjects)
 #' @param plot_var Column in the scoot_object$composition: either "freq" for cell type relative abundance in percent or "clr" (for centered log-ratio transformed). Default: "clr" as it is better suited for statistical analysis and is better able to also show low abundant cell types.
@@ -2303,13 +2306,12 @@ composition_barplot <- function(scoot_object = NULL,
 #' @param return_plot_to_var Optionally, you can save the ggplots to a variable if you would like to further modify and adapt the plots on your own.
 #' @param group_by This allows you to pass a metadata column name present in your scoot_object$metadata to show your samples in groups, for example by "condition".
 #' @param facet_by This allows you to pass a metadata column name present in your scoot_object$metadata to show your samples in facets with ggplot facet_grid, for example by "condition".
-#' @param pval_method Specify method how to calculate the p-value. Wilcoxon test is recommended as compositional data might not fullfill the assumption of a gaussian distribution. For alternatives, see documentation of ggpubr::stat_pwc.
 #' @param p_adjust_method Method for adjusting p-values (see ggpubr::stat_pwc for available methods)
 #' @param palette Choose a palette of your liking. For available palettes, see ggsci package. Default: "lancet"
 #' @param legend_position Where to put the legend. Possible options: "top", "right", "bottom", "left"
 
 #' @importFrom ggplot2 ggplot aes geom_boxplot theme element_text ggtitle facet_grid position_jitterdodge
-#' @importFrom ggpubr stat_pwc ggboxplot
+#' @importFrom ggpubr stat_compare_means ggboxplot
 #' @importFrom stats reformulate
 #' @importFrom patchwork wrap_plots
 
@@ -2323,8 +2325,6 @@ composition_boxplot <- function(scoot_object = NULL,
                                 return_plot_to_var = FALSE,
                                 group_by = NULL,
                                 facet_by = NULL,
-                                pval_method = "wilcox.test",
-                                p_adjust_method = "BH",
                                 palette = "lancet",
                                 legend_position = "right") {
 
@@ -2413,13 +2413,10 @@ composition_boxplot <- function(scoot_object = NULL,
                      facet.by = facet_by,
                      legend = legend_position) +
         geom_jitter(mapping = aes(color = !!group_by_gg), position=position_jitterdodge(jitter.width = 1/nr_of_boxplots), size = 1) +
-        stat_pwc(aes(group = !!group_by_gg),
-                 label = "p.signif",
-                 method = pval_method,
-                 p.adjust.method = p_adjust_method,
-                 p.adjust.by = "panel",
-                 tip.length = 0,
-                 hide.ns = TRUE)
+        stat_compare_means(aes(group = !!group_by_gg),
+                           label = "p.signif",
+                           tip.length = 0,
+                           hide.ns = TRUE)
     }
 
     p <- p +
@@ -2464,13 +2461,10 @@ composition_boxplot <- function(scoot_object = NULL,
                                                  facet.by = facet_by,
                                                  legend = legend_position) +
           geom_jitter(mapping = aes(color = !!group_by_gg), position=position_jitterdodge(jitter.width = 1/nr_of_boxplots), size = 1) +
-          stat_pwc(aes(group = !!group_by_gg),
-                   label = "p.signif",
-                   method = pval_method,
-                   p.adjust.method = p_adjust_method,
-                   p.adjust.by = "panel",
-                   tip.length = 0,
-                   hide.ns = TRUE)
+          stat_compare_means(aes(group = !!group_by_gg),
+                             label = "p.signif",
+                             tip.length = 0,
+                             hide.ns = TRUE)
       }
 
       p_list[["plot_list"]][[ct]] <- p_list[["plot_list"]][[ct]] +
