@@ -2541,7 +2541,7 @@ feature_corr_plot <- function (scores = NULL,
     nams <- c()
     for (j in names(dm_list)) {
       vec1 <- as.numeric(correlation_between_dms(dm_list[[i]], dm_list[[j]])[1])
-      if(length(vec1) > 0){
+      if (length(vec1) > 0) {
         vec <- c(vec, vec1)
         nams <- c(nams, j)
       }
@@ -2554,8 +2554,8 @@ feature_corr_plot <- function (scores = NULL,
   row.names(corr_df) <- nams
 
   if (plot) {
-    Heatmap_args["matrix"] <- corr_df
-    hm <- do.call(ComplexHeatmap::Heatmap, Heatmap_args)
+    ComplexHeatmap_args[["matrix"]] <- as.matrix(corr_df)
+    hm <- do.call(ComplexHeatmap::Heatmap, ComplexHeatmap_args)
     ComplexHeatmap::draw(hm, heatmap_legend_side = c("left"))
   }
 

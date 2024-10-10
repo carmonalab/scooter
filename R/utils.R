@@ -1305,7 +1305,7 @@ correlation_between_dms <- function(dm1, dm2) {
     dm2_flat <- as.vector(dm2_common_ranks)
 
     # Calculate Pearson correlation
-    corrs[i] <- stats::cor(dm1_flat, dm2_flat)
+    corrs <- stats::cor(dm1_flat, dm2_flat)
 
     return(corrs)
   }
