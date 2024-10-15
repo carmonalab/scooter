@@ -260,7 +260,7 @@ get_cluster_score_pre_proc <- function(scoot_object,
             scale(center = TRUE,
                   scale = TRUE) %>%
             as.data.frame() %>%
-            select_if(~ !any(is.na(.)))
+            dplyr::select_if(~ !any(is.na(.)))
           filter_feat_dist(df, min_samples, dist_method)
         }
       )

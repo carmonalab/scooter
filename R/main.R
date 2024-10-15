@@ -678,7 +678,7 @@ get_aggregated_signature <- function(object,
 #' @param progressbar Whether to show a progressbar or not
 #' @param verbose Whether to show optional messages or not
 
-#' @importFrom dplyr mutate mutate_if filter %>% mutate_all full_join
+#' @importFrom dplyr mutate mutate_if filter %>% mutate_all full_join select where n_distinct
 #' @importFrom tibble column_to_rownames rownames_to_column
 #' @importFrom data.table rbindlist
 #' @importFrom methods slot
@@ -775,13 +775,13 @@ merge_scoot_objects <- function(scoot_object = NULL,
   }
   metadata <- lapply(names(scoot_object),
                      function(x) {scoot_object[[x]]@metadata[1, all_names_in_all] %>%
-                         mutate(scoot_sample = x)
+                         dplyr::mutate(scoot_sample = x)
                      }
   )
   metadata <- data.table::rbindlist(metadata, use.names=TRUE, fill=TRUE)
 
   # Remove columns that contain identical values across all rows
-  metadata <- metadata %>% select(where(~ n_distinct(.) > 1))
+  metadata <- metadata %>% dplyr::select(dplyr::where(~ dplyr::n_distinct(.) > 1))
 
   comp_prop <- list()
   avg_expr <- list()
@@ -814,7 +814,7 @@ merge_scoot_objects <- function(scoot_object = NULL,
       df <- lapply(X = layer_present,
                    function(x) {
                      scoot_object[[x]]@data[[type]][[gb]] %>%
-                       mutate(scoot_sample = x)
+                       dplyr::mutate(scoot_sample = x)
                    })
       df <- data.table::rbindlist(df, use.names=TRUE, fill=TRUE)
       comp_prop[[gb]] <- df
@@ -832,7 +832,7 @@ merge_scoot_objects <- function(scoot_object = NULL,
                      function(x) {
                        if (!is.null(scoot_object[[x]]@data[[type]][[gb]][[i]])) {
                          scoot_object[[x]]@data[[type]][[gb]][[i]] %>%
-                           mutate(scoot_sample = x)
+                           dplyr::mutate(scoot_sample = x)
                        }
                      })
         df <- data.table::rbindlist(df, use.names=TRUE, fill=TRUE)
@@ -881,7 +881,7 @@ merge_scoot_objects <- function(scoot_object = NULL,
                                }) %>%
         reduce(full_join, by = "gene") %>%
         # convert NA to 0
-        mutate_if (is.numeric, ~ifelse(is.na(.), 0, .)) %>%
+        dplyr::mutate_if (is.numeric, ~ifelse(is.na(.), 0, .)) %>%
         tibble::column_to_rownames("gene") %>%
         as.matrix() %>%
         Matrix::Matrix(., sparse = TRUE)
@@ -896,7 +896,7 @@ merge_scoot_objects <- function(scoot_object = NULL,
                  function(x) {
                    if (!is.null(scoot_object[[x]]@data[[type]][[gb]])) {
                      scoot_object[[x]]@data[[type]][[gb]] %>%
-                       mutate(scoot_sample = x)
+                       dplyr::mutate(scoot_sample = x)
                    }
                  })
     df <- data.table::rbindlist(df,
@@ -943,7 +943,7 @@ merge_scoot_objects <- function(scoot_object = NULL,
 #' @importFrom BiocParallel MulticoreParam bplapply
 #' @importFrom parallelly availableCores
 #' @importFrom data.table rbindlist
-#' @importFrom dplyr mutate mutate_if filter %>% coalesce mutate_all full_join row_number
+#' @importFrom dplyr mutate mutate_if filter %>% coalesce mutate_all full_join row_number select_if
 #' @importFrom tibble rownames_to_column column_to_rownames remove_rownames
 #' @importFrom ggplot2 aes geom_point guides theme geom_col labs guide_legend annotate theme_bw ggtitle geom_ribbon element_text set_last_plot
 #' @importFrom MatrixGenerics rowVars rowMins
@@ -2194,7 +2194,7 @@ nas_per_sample <- function(obj_list = NULL,
 #' @param return_plot_to_var Optionally, you can save the ggplots to a variable if you would like to further modify and adapt the plots on your own.
 #' @param facet_by This allows you to pass a metadata column name present in your scoot_object$metadata to show your samples in facets with ggplot facet_grid, for example by "condition".
 
-#' @importFrom ggplot2 ggplot aes geom_bar theme element_text ggtitle facet_grid
+#' @importFrom ggplot2 ggplot aes geom_bar theme element_text ggtitle facet_grid xlab ylab facet_grid
 #' @importFrom stats reformulate
 #' @importFrom patchwork wrap_plots
 
@@ -2236,7 +2236,7 @@ composition_barplot <- function(scoot_object = NULL,
   meta <- scoot_object@metadata
 
   if (!is.null(facet_by)) {
-    facet_by_reformulate <- reformulate(facet_by)
+    facet_by_reformulate <- stats::reformulate(facet_by)
   }
 
   ylab <- "Relative abundance (%)"
@@ -2244,16 +2244,16 @@ composition_barplot <- function(scoot_object = NULL,
   if (is.data.frame(comps)) {
     comp <- merge(comps, meta[, c(sample_col, facet_by), drop=FALSE], by = sample_col)
 
-    p <- ggplot(comp, aes(x = scoot_sample, y = freq, fill = celltype)) +
-      geom_bar(stat = "identity") +
-      theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-      xlab("") + ylab(ylab)
+    p <- ggplot2::ggplot(comp, ggplot2::aes(x = scoot_sample, y = freq, fill = celltype)) +
+      ggplot2::geom_bar(stat = "identity") +
+      ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
+      ggplot2::xlab("") + ggplot2::ylab(ylab)
 
     if (!is.null(facet_by)) {
 
-      p <- p + facet_grid(facet_by_reformulate,
-                          space  = "free",
-                          scales = "free")
+      p <- p + ggplot2::facet_grid(facet_by_reformulate,
+                                   space  = "free",
+                                   scales = "free")
     }
 
     if (return_plot_to_var) {
@@ -2269,17 +2269,17 @@ composition_barplot <- function(scoot_object = NULL,
       comp <- scoot_object@data[["composition"]][[layer]][[ct]]
       comp <- merge(comp, meta[, c(sample_col, facet_by), drop=FALSE], by = sample_col)
 
-      p_list[["plot_list"]][[ct]] <- ggplot(comp, aes(x = scoot_sample, y = freq, fill = celltype)) +
-        geom_bar(stat = "identity") +
-        xlab("") + ylab(ylab) +
-        theme(axis.text.x = element_text(angle = 45, hjust=1)) +
-        ggtitle(ct)
+      p_list[["plot_list"]][[ct]] <- ggplot2::ggplot(comp, ggplot2::aes(x = scoot_sample, y = freq, fill = celltype)) +
+        ggplot2::geom_bar(stat = "identity") +
+        ggplot2::xlab("") + ggplot2::ylab(ylab) +
+        ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust=1)) +
+        ggplot2::ggtitle(ct)
 
       if (!is.null(facet_by)) {
         p_list[["plot_list"]][[ct]] <- p_list[["plot_list"]][[ct]] +
-          facet_grid(facet_by_reformulate,
-                     space  = "free",
-                     scales = "free")
+          ggplot2::facet_grid(facet_by_reformulate,
+                              space  = "free",
+                              scales = "free")
       }
 
     }
@@ -2310,7 +2310,7 @@ composition_barplot <- function(scoot_object = NULL,
 #' @param palette Choose a palette of your liking. For available palettes, see ggsci package. Default: "lancet"
 #' @param legend_position Where to put the legend. Possible options: "top", "right", "bottom", "left"
 
-#' @importFrom ggplot2 ggplot aes geom_boxplot theme element_text ggtitle facet_grid position_jitterdodge
+#' @importFrom ggplot2 ggplot aes geom_boxplot theme element_text ggtitle facet_grid geom_jitter position_jitterdodge sym expansion
 #' @importFrom ggpubr stat_compare_means ggboxplot
 #' @importFrom stats reformulate
 #' @importFrom patchwork wrap_plots
@@ -2349,7 +2349,7 @@ composition_boxplot <- function(scoot_object = NULL,
       stop("Please provide one character string for the group_by parameter")
     }
     group_by <- make.names(group_by)
-    group_by_gg <- sym(group_by)
+    group_by_gg <- ggplot2::sym(group_by)
     nr_of_boxplots <- scoot_object@metadata[[group_by]] %>%
       unique() %>%
       length() %>%
@@ -2373,7 +2373,7 @@ composition_boxplot <- function(scoot_object = NULL,
   comps <- scoot_object@data[["composition"]][[layer]]
   meta <- scoot_object@metadata
 
-  plot_var_gg <- sym(plot_var)
+  plot_var_gg <- ggplot2::sym(plot_var)
 
   if (plot_var == "clr") {
     ylab <- "Relative abundance (clr)"
@@ -2391,37 +2391,39 @@ composition_boxplot <- function(scoot_object = NULL,
     # Need to check if group_by is NULL
     # Due to a presumed bug, if group_by is passed as variable to ggboxplot, even if it is assigned NULL, it throws an error
     if (is.null(group_by)) {
-      p <- ggboxplot(comp,
-                     x = "celltype",
-                     y = plot_var,
-                     xlab = "",
-                     ylab = ylab,
-                     outlier.shape = NA,
-                     palette = palette,
-                     facet.by = facet_by,
-                     legend = legend_position) +
-        geom_jitter(width = 0.2, size = 1)
+      p <- ggpubr::ggboxplot(comp,
+                             x = "celltype",
+                             y = plot_var,
+                             xlab = "",
+                             ylab = ylab,
+                             outlier.shape = NA,
+                             palette = palette,
+                             facet.by = facet_by,
+                             legend = legend_position) +
+        ggplot2::geom_jitter(width = 0.2, size = 1)
     } else {
-      p <- ggboxplot(comp,
-                     x = "celltype",
-                     y = plot_var,
-                     xlab = "",
-                     ylab = ylab,
-                     color = group_by,
-                     outlier.shape = NA,
-                     palette = palette,
-                     facet.by = facet_by,
-                     legend = legend_position) +
-        geom_jitter(mapping = aes(color = !!group_by_gg), position=position_jitterdodge(jitter.width = 1/nr_of_boxplots), size = 1) +
-        stat_compare_means(aes(group = !!group_by_gg),
-                           label = "p.signif",
-                           tip.length = 0,
-                           hide.ns = TRUE)
+      p <- ggpubr::ggboxplot(comp,
+                             x = "celltype",
+                             y = plot_var,
+                             xlab = "",
+                             ylab = ylab,
+                             color = group_by,
+                             outlier.shape = NA,
+                             palette = palette,
+                             facet.by = facet_by,
+                             legend = legend_position) +
+        ggplot2::geom_jitter(mapping = ggplot2::aes(color = !!group_by_gg),
+                             position = ggplot2::position_jitterdodge(jitter.width = 1/nr_of_boxplots),
+                             size = 1) +
+        ggpubr::stat_compare_means(ggplot2::aes(group = !!group_by_gg),
+                                   label = "p.signif",
+                                   tip.length = 0,
+                                   hide.ns = TRUE)
     }
 
     p <- p +
-      theme(axis.text.x = element_text(angle = 45, hjust=1)) +
-      scale_y_continuous(expand = expansion(mult = c(0.05, 0.1)))
+      ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust=1)) +
+      ggplot2::scale_y_continuous(expand = expansion(mult = c(0.05, 0.1)))
 
     if (return_plot_to_var) {
       return(p)
@@ -2439,37 +2441,39 @@ composition_boxplot <- function(scoot_object = NULL,
       # Need to check if group_by is NULL
       # Due to a presumed bug, if group_by is passed as variable to ggboxplot, even if it is assigned NULL, it throws an error
       if (is.null(group_by)) {
-        p_list[["plot_list"]][[ct]] <- ggboxplot(comp,
-                                                 x = "celltype",
-                                                 y = plot_var,
-                                                 xlab = "",
-                                                 ylab = ylab,
-                                                 outlier.shape = NA,
-                                                 palette = palette,
-                                                 facet.by = facet_by,
-                                                 legend = legend_position) +
-          geom_jitter(width = 0.2, size = 1)
+        p_list[["plot_list"]][[ct]] <- ggpubr::ggboxplot(comp,
+                                                         x = "celltype",
+                                                         y = plot_var,
+                                                         xlab = "",
+                                                         ylab = ylab,
+                                                         outlier.shape = NA,
+                                                         palette = palette,
+                                                         facet.by = facet_by,
+                                                         legend = legend_position) +
+          ggplot2::geom_jitter(width = 0.2, size = 1)
       } else {
-        p_list[["plot_list"]][[ct]] <- ggboxplot(comp,
-                                                 x = "celltype",
-                                                 y = plot_var,
-                                                 xlab = "",
-                                                 ylab = ylab,
-                                                 color = group_by,
-                                                 outlier.shape = NA,
-                                                 palette = palette,
-                                                 facet.by = facet_by,
-                                                 legend = legend_position) +
-          geom_jitter(mapping = aes(color = !!group_by_gg), position=position_jitterdodge(jitter.width = 1/nr_of_boxplots), size = 1) +
-          stat_compare_means(aes(group = !!group_by_gg),
-                             label = "p.signif",
-                             tip.length = 0,
-                             hide.ns = TRUE)
+        p_list[["plot_list"]][[ct]] <- ggpubr::ggboxplot(comp,
+                                                         x = "celltype",
+                                                         y = plot_var,
+                                                         xlab = "",
+                                                         ylab = ylab,
+                                                         color = group_by,
+                                                         outlier.shape = NA,
+                                                         palette = palette,
+                                                         facet.by = facet_by,
+                                                         legend = legend_position) +
+          ggplot2::geom_jitter(mapping = ggplot2::aes(color = !!group_by_gg),
+                      position = ggplot2::position_jitterdodge(jitter.width = 1/nr_of_boxplots),
+                      size = 1) +
+          ggpubr::stat_compare_means(aes(group = !!group_by_gg),
+                                   label = "p.signif",
+                                   tip.length = 0,
+                                   hide.ns = TRUE)
       }
 
       p_list[["plot_list"]][[ct]] <- p_list[["plot_list"]][[ct]] +
-        theme(axis.text.x = element_text(angle = 45, hjust=1)) +
-        scale_y_continuous(expand = expansion(mult = c(0.05, 0.1)))
+        ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust=1)) +
+        ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0.05, 0.1)))
 
     }
     p_list[["arranged_plots"]] <- patchwork::wrap_plots(p_list[["plot_list"]])
