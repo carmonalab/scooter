@@ -805,11 +805,13 @@ merge_scoot_objects <- function(scoot_object = NULL,
       lapply(function(x) {is.list(x) &!inherits(x, "data.frame")}) %>%
       unlist()
 
-    if (all(is_df_check)) {
+    if (sum(is_df_check) > 0) {
       df <- lapply(X = layer_present,
                    function(x) {
-                     scoot_object[[x]]@data[[type]][[gb]] %>%
-                       dplyr::mutate(scoot_sample = x)
+                     if (length(scoot_object[[x]]@data[[type]][[gb]]) > 0) {
+                       scoot_object[[x]]@data[[type]][[gb]] %>%
+                         dplyr::mutate(scoot_sample = x)
+                     }
                    })
       df <- data.table::rbindlist(df, use.names=TRUE, fill=TRUE)
       comp_prop[[gb]] <- df
