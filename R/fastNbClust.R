@@ -2,6 +2,7 @@
 # NbClust showed excessive memory consumption when used in bplapply loop
 # fastNbClust uses fastcluster::hclust instead of stats::hclust
 # Results in minimal memory usage and improved speed
+# All credits for this script goes to the developers of fastcluster::hclust and stats::hclust
 
 #' @importFrom fastcluster hclust
 
