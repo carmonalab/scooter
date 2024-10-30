@@ -467,6 +467,20 @@ get_aggregated_profile <- function(object,
     # compute pseudobulk
     suppressWarnings({
 
+      # # Calculate total (sample) pseudobulk of not annotated cells
+      # if (i == names(ann_layer_cols)[1]) {
+      #   na_cells <- is.na(object[[ann_layer_cols[[i]]]])
+      #   if (sum(na_cells) > min_cells_aggregated) {
+      #     obj <- object[, which(na_cells)]
+      #     mat <- obj@assays[[assay]]["counts"]
+      #     row_names <- row.names(mat)
+      #     mat <- Matrix::Matrix(Matrix::rowSums(mat))
+      #     row.names(mat) <- row_names
+      #     colnames(mat) <- "all.not_annotated_only"
+      #     avg_exp[[i]] <- cbind(avg_exp[[i]], mat)
+      #   }
+      # }
+
       # Calculate total (sample) pseudobulks
       if (i == names(ann_layer_cols)[1]) {
 
@@ -479,7 +493,7 @@ get_aggregated_profile <- function(object,
 
         na_cells <- is.na(object[[ann_layer_cols[[i]]]])
 
-        if (sum(!na_cells) > 0) {
+        if (sum(!na_cells) > min_cells_aggregated) {
           # Calculate pseudobulk for annotated cells in sample
           # Subset to remove not annotated cells
           obj <- object[, which(!na_cells)]
@@ -517,7 +531,7 @@ get_aggregated_profile <- function(object,
 
       if (length(keep) == 0) {
         avg_exp[[i]] <- NULL
-      } else {
+      } else if (length(keep) >= 2) {
         object@meta.data$fltr <- object@meta.data[[ann_layer_cols[[i]]]]
         object <- object[, as.character(object$fltr) %in% keep]
         object <- object[, !is.na(object$fltr)]
@@ -534,7 +548,7 @@ get_aggregated_profile <- function(object,
             )
           )
           avg_exp[[i]] <- cbind(avg_exp[[i]], mat)
-        } else {
+        } else if (length(keep) == 1) {
           # Handle case if there is only one cell type
           col_name <- as.character(unique(object@meta.data[[ann_layer_cols[[i]]]]))
           avg_exp[[i]] <- object@assays[[assay]]["counts"]

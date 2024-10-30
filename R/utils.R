@@ -901,7 +901,7 @@ calc_modularity <- function(feat_mat,
 
   results <- list()
 
-  g <- scran::buildKNNGraph(feat_mat,
+  g <- scran::buildKNNGraph(as.matrix(feat_mat),
                             transposed = TRUE,
                             k = k)
 
