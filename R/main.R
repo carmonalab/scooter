@@ -243,7 +243,7 @@ get_celltype_composition <- function(object = NULL,
   }
 
   # input can be a Seurat object or a dataframe containing its meta.data
-  # convert object to metadata if seurat object is provided
+  # convert object to metadata if Seurat object is provided
   if (inherits(object, "Seurat")) {
     meta.data <- object@meta.data
     if (is.null(meta.data)) {
@@ -257,7 +257,7 @@ get_celltype_composition <- function(object = NULL,
     stop("Please specificy an ann_layer_cols variable")
   }
 
-  # Assess wheter split_by variable is in metadata
+  # Assess whether split_by variable is in metadata
   if (!is.null(split_by) &&
       !split_by %in% names(meta.data)) {
     stop("split_by variable not found in meta.data!\n")
@@ -417,6 +417,7 @@ get_celltype_composition <- function(object = NULL,
 
 #' @importFrom Seurat AverageExpression AggregateExpression FindVariableFeatures
 #' @importFrom dplyr filter
+#' @importFrom Matrix Matrix rowSums
 #' @return Average and aggregated expression as a list of matrices for all genes and indicated gene lists filtering.
 #' @export get_aggregated_profile
 
@@ -472,7 +473,7 @@ get_aggregated_profile <- function(object,
         # Calculate pseudobulk for ALL cells in sample
         avg_exp[[i]] <- object@assays[["RNA"]]["counts"]
         row_names <- row.names(avg_exp[[i]])
-        avg_exp[[i]] <- Matrix::Matrix(rowSums(avg_exp[[i]]))
+        avg_exp[[i]] <- Matrix::Matrix(Matrix::rowSums(avg_exp[[i]]))
         row.names(avg_exp[[i]]) <- row_names
         colnames(avg_exp[[i]]) <- "all"
 
@@ -486,7 +487,7 @@ get_aggregated_profile <- function(object,
           # Calculate pseudobulk of all annotated cells
           mat <- obj@assays[["RNA"]]["counts"]
           row_names <- row.names(mat)
-          mat <- Matrix::Matrix(rowSums(mat))
+          mat <- Matrix::Matrix(Matrix::rowSums(mat))
           row.names(mat) <- row_names
           colnames(mat) <- "all.annotated_only"
 
@@ -497,7 +498,7 @@ get_aggregated_profile <- function(object,
           obj <- object[, which(na_cells)]
           mat <- obj@assays[[assay]]["counts"]
           row_names <- row.names(mat)
-          mat <- Matrix::Matrix(rowSums(mat))
+          mat <- Matrix::Matrix(Matrix::rowSums(mat))
           row.names(mat) <- row_names
           colnames(mat) <- "all.not_annotated_only"
           avg_exp[[i]] <- cbind(avg_exp[[i]], mat)
@@ -538,7 +539,7 @@ get_aggregated_profile <- function(object,
           col_name <- as.character(unique(object@meta.data[[ann_layer_cols[[i]]]]))
           avg_exp[[i]] <- object@assays[[assay]]["counts"]
           row_names <- row.names(avg_exp[[i]])
-          avg_exp[[i]] <- Matrix::Matrix(rowSums(avg_exp[[i]]))
+          avg_exp[[i]] <- Matrix::Matrix(Matrix::rowSums(avg_exp[[i]]))
           row.names(avg_exp[[i]]) <- row_names
           colnames(avg_exp[[i]]) <- col_name
         }
@@ -942,7 +943,7 @@ merge_scoot_objects <- function(scoot_object = NULL,
 #' @importFrom data.table rbindlist
 #' @importFrom dplyr mutate mutate_if filter %>% coalesce mutate_all full_join row_number select_if
 #' @importFrom tibble rownames_to_column column_to_rownames remove_rownames
-#' @importFrom ggplot2 aes geom_point guides theme geom_col labs guide_legend annotate theme_bw ggtitle geom_ribbon element_text set_last_plot
+#' @importFrom ggplot2 aes geom_point guides theme geom_col labs guide_legend annotate theme_bw ggtitle geom_ribbon element_text set_last_plot coord_equal
 #' @importFrom MatrixGenerics rowVars rowMins
 #' @importFrom BiocGenerics counts
 #' @importFrom stringr str_to_title

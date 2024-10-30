@@ -1192,7 +1192,7 @@ plot_pca <- function(matrix,
                                   repel=repel,
                                   mean.point = FALSE) +
           # do not rescale x and y-axes, so scale does not get distorted and represents actual distance better
-          coord_equal() +
+          ggplot2::coord_equal() +
           # Remove shapes added by fviz_pca
           scale_shape_manual(values = c(rep(19, length(unique(color_cluster_by)))))
       )
